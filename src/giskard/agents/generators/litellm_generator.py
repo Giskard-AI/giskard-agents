@@ -7,6 +7,7 @@ from .base import BaseGenerator, GenerationParams, Response
 from .mixins import WithRateLimiter, WithRetryPolicy
 
 
+@BaseGenerator.register("litellm")
 class LiteLLMGenerator(WithRateLimiter, WithRetryPolicy, BaseGenerator):
     """A generator for creating chat completion pipelines."""
 
