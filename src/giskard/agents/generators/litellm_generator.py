@@ -23,7 +23,7 @@ class LiteLLMGenerator(WithRateLimiter, WithRetryPolicy, BaseGenerator):
         params_ = self.params.model_dump(exclude={"tools"})
 
         if params is not None:
-            params_.update(params.model_dump(exclude={"tools"}))
+            params_.update(params.model_dump(exclude={"tools"}, exclude_unset=True))
 
         # Now special handling of the tools
         tools = self.params.tools + (params.tools if params is not None else [])

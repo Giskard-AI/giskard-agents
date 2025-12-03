@@ -5,7 +5,7 @@ import pytest
 from litellm import ModelResponse
 
 from giskard.agents.chat import Chat, Message
-from giskard.agents.generators.base import Response
+from giskard.agents.generators.base import GenerationParams, Response
 from giskard.agents.generators.litellm_generator import LiteLLMGenerator
 from giskard.agents.workflow import ChatWorkflow
 from giskard.agents.rate_limiter import RateLimiter
@@ -138,3 +138,26 @@ def test_generator_with_params():
     assert int_generator.params.response_format is int
     assert new_generator.params.response_format is None
     assert generator.params.response_format is None
+
+
+async def test_generator_with_params_overwrite(mock_response):
+    generator = LiteLLMGenerator(model="test-model").with_params(
+        temperature=0.5,
+        max_tokens=100,
+    )
+
+    with patch(
+        "giskard.agents.generators.litellm_generator.acompletion",
+        return_value=mock_response,
+    ) as mock_acompletion:
+        await generator.complete(
+            messages=[Message(role="user", content="Test message")],
+            params=GenerationParams(max_tokens=200),
+        )
+
+        # Verify acompletion was called with the correct parameters
+        mock_acompletion.assert_called_once()
+        call_kwargs = mock_acompletion.call_args.kwargs
+        assert call_kwargs["temperature"] == 0.5
+        assert call_kwargs["max_tokens"] == 200
+        assert call_kwargs["model"] == "test-model"
