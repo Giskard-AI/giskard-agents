@@ -27,6 +27,7 @@ lint: ## Run linting checks
 	uv tool run ruff check .
 
 format: ## Format code with ruff
+	uv tool run ruff check --fix .
 	uv tool run ruff format .
 
 check-format: ## Check if code is formatted correctly

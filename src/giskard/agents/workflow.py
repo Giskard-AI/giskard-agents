@@ -1,6 +1,7 @@
 import asyncio
-from enum import StrEnum
 import json
+from contextlib import asynccontextmanager
+from enum import StrEnum
 from typing import (
     Any,
     AsyncGenerator,
@@ -9,16 +10,15 @@ from typing import (
     Generic,
     List,
     Optional,
+    Self,
     Type,
     TypeVar,
-    Self,
     cast,
 )
 
-from contextlib import asynccontextmanager
 import logfire_api as logfire
-from pydantic import BaseModel, Field, ValidationError
 import tenacity as t
+from pydantic import BaseModel, Field, ValidationError
 
 from .chat import Chat, Message, Role
 from .context import RunContext
