@@ -497,8 +497,7 @@ name = "giskard-agents"
 version = "0.3.0"
 source = { editable = "." }
 dependencies = [
-    { name = "giskard-core", version = "0.1.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
-    { name = "giskard-core", version = "0.1.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "giskard-core" },
     { name = "griffe" },
     { name = "jinja2" },
     { name = "litellm" },
@@ -519,7 +518,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "giskard-core", specifier = ">=0.1.3,<1" },
+    { name = "giskard-core", specifier = ">=0.1.5,<1" },
     { name = "griffe", specifier = ">=1.7.0,<2" },
     { name = "jinja2", specifier = ">=3.1.6,<4" },
     { name = "litellm", specifier = ">=1.72.0,<2" },
@@ -540,32 +539,14 @@ dev = [
 
 [[package]]
 name = "giskard-core"
-version = "0.1.3"
+version = "0.1.5"
 source = { registry = "https://pypi.org/simple" }
-resolution-markers = [
-    "python_full_version >= '3.12'",
-]
 dependencies = [
-    { name = "pydantic", marker = "python_full_version >= '3.12'" },
+    { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/43/75/2e65a16f0528fca6a47e59272c80d1d73ff1b078f8748ba2bb2ed491e987/giskard_core-0.1.3.tar.gz", hash = "sha256:9ef856b9f6f4779e08579da89e7456e150ca38cdac542b775aa1633ae0b76b66", size = 3345 }
+sdist = { url = "https://files.pythonhosted.org/packages/ae/ee/1810266df545a754db95890e5cefdcdcce7114beaacc2e35c141cbb46b52/giskard_core-0.1.5.tar.gz", hash = "sha256:61b96251e8389261472010ca70e3592d9e5eaa28491dc3d6010471b2e4189e13", size = 3485 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c4/b5/f4e133d5832fdc7fd512249e81d83c3b337899c379ea91261fb9853104c5/giskard_core-0.1.3-py3-none-any.whl", hash = "sha256:8271263d02bbcd08e6bb44aa008c6b603a7a4d81d42e41fba128ec6a2262ed2b", size = 4087 },
-]
-
-[[package]]
-name = "giskard-core"
-version = "0.1.4"
-source = { registry = "https://pypi.org/simple" }
-resolution-markers = [
-    "python_full_version < '3.12'",
-]
-dependencies = [
-    { name = "pydantic", marker = "python_full_version < '3.12'" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/b5/dc/39222a3993c50150b6c46871c67add7065e61a9020d32c603c22aa4566e2/giskard_core-0.1.4.tar.gz", hash = "sha256:84286e5905fa718712669e6f14219116f81295f189adddc7eddab7663a0fcbc9", size = 3344 }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/da/53/ccc81822b091ff7a12b57a821deed8e2048beafdc22fc7d69d902dd57639/giskard_core-0.1.4-py3-none-any.whl", hash = "sha256:bff743bd02db8818f4c76ea1e2e83875a89ed7d995a2b077e1927f2d0135bbc6", size = 4084 },
+    { url = "https://files.pythonhosted.org/packages/ea/69/b2fbb827dd92f2675118b1a11901f55986d4f6fe29bdf320a0afdb2907a7/giskard_core-0.1.5-py3-none-any.whl", hash = "sha256:b895c138f746145a8381815eacdb2dc84044c901d5be2f6564f71a1729fd0c66", size = 4357 },
 ]
 
 [[package]]

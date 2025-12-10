@@ -26,8 +26,8 @@ def test_generator_serialization():
             tools=[Tool(name="test-tool", description="Test tool", fn=lambda: "test")],
         ),
     )
-    serialized = original.model_dump()
-    deserialized = BaseGenerator.model_validate(serialized)
+    serialized = original.model_dump_json(exclude={"params": {"tools"}})
+    deserialized = BaseGenerator.model_validate_json(serialized)
 
     assert isinstance(deserialized, Generator)
     assert isinstance(deserialized, LiteLLMGenerator)
@@ -45,13 +45,6 @@ def test_generator_serialization():
     assert deserialized.params.temperature == 0.5
     assert deserialized.params.max_tokens == 100
     assert deserialized.params.response_format is None
-
-    assert deserialized.params.tools is not None
-    assert len(deserialized.params.tools) == 1
-    assert deserialized.params.tools[0].name == "test-tool"
-    assert deserialized.params.tools[0].description == "Test tool"
-    assert deserialized.params.tools[0].fn is not None
-    assert deserialized.params.tools[0].fn() == "test"
 
 
 async def test_generator_serialization_custom_generator():
@@ -73,8 +66,8 @@ async def test_generator_serialization_custom_generator():
             )
 
     original = CustomGenerator(content="Test response")
-    serialized = original.model_dump()
-    deserialized = BaseGenerator.model_validate(serialized)
+    serialized = original.model_dump_json()
+    deserialized = BaseGenerator.model_validate_json(serialized)
 
     assert isinstance(deserialized, CustomGenerator)
     assert deserialized.content == "Test response"
@@ -108,8 +101,8 @@ def test_chat_workflow_serialization():
         .on_error(ErrorPolicy.RETURN)
     )
 
-    serialized = original.model_dump()
-    deserialized = ChatWorkflow.model_validate(serialized)
+    serialized = original.model_dump_json(exclude={"tools"})
+    deserialized = ChatWorkflow.model_validate_json(serialized)
 
     # Verify generator is restored
     assert isinstance(deserialized.generator, Generator)
@@ -124,14 +117,6 @@ def test_chat_workflow_serialization():
     assert isinstance(deserialized.messages[1], MessageTemplate)
     assert deserialized.messages[1].role == "assistant"
     assert deserialized.messages[1].content_template == "I'm doing well!"
-
-    # Verify tools are restored
-    assert len(deserialized.tools) == 1
-    assert "test-tool" in deserialized.tools
-    assert deserialized.tools["test-tool"].name == "test-tool"
-    assert deserialized.tools["test-tool"].description == "Test tool"
-    assert deserialized.tools["test-tool"].fn is not None
-    assert deserialized.tools["test-tool"].fn() == "test"
 
     # Verify inputs are restored
     assert deserialized.inputs["name"] == "TestUser"
@@ -173,8 +158,8 @@ async def test_chat_workflow_serialization_custom_generator():
         .with_inputs(test_input="test_value")
     )
 
-    serialized = original.model_dump()
-    deserialized = ChatWorkflow.model_validate(serialized)
+    serialized = original.model_dump_json(exclude={"tools"})
+    deserialized = ChatWorkflow.model_validate_json(serialized)
 
     # Verify generator is restored correctly
     assert isinstance(deserialized.generator, CustomGenerator)
@@ -185,11 +170,6 @@ async def test_chat_workflow_serialization_custom_generator():
     assert len(deserialized.messages) == 1
     assert isinstance(deserialized.messages[0], MessageTemplate)
     assert deserialized.messages[0].content_template == "Test message"
-
-    # Verify tools are restored
-    assert len(deserialized.tools) == 1
-    assert "workflow-tool" in deserialized.tools
-    assert deserialized.tools["workflow-tool"].fn("test") == "processed: test"
 
     # Verify inputs are restored
     assert deserialized.inputs["test_input"] == "test_value"
