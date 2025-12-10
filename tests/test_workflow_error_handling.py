@@ -1,25 +1,25 @@
 import pytest
 from pydantic import Field, PrivateAttr
 
-import counterpoint as cp
-from counterpoint.errors import WorkflowError
-from counterpoint.workflow import ErrorPolicy
+from giskard import agents
+from giskard.agents.errors import WorkflowError
+from giskard.agents.workflow import ErrorPolicy
 
 
-class FailingGenerator(cp.generators.BaseGenerator):
+class FailingGenerator(agents.generators.BaseGenerator):
     fail_after: int = Field(default=0)
     _num_calls: int = PrivateAttr(default=0)
 
     async def _complete(
         self,
-        messages: list[cp.chat.Message],
-        params: cp.generators.GenerationParams | None = None,
-    ) -> cp.generators.Response:
+        messages: list[agents.chat.Message],
+        params: agents.generators.GenerationParams | None = None,
+    ) -> agents.generators.Response:
         if self._num_calls >= self.fail_after:
             raise ValueError("Test error")
         self._num_calls += 1
-        return cp.generators.Response(
-            message=cp.chat.Message(
+        return agents.generators.Response(
+            message=agents.chat.Message(
                 role="assistant", content=f"Test response {self._num_calls}"
             ),
             finish_reason="stop",
@@ -28,7 +28,7 @@ class FailingGenerator(cp.generators.BaseGenerator):
 
 async def test_run_raises_error(generator):
     """Test that errors are handled correctly."""
-    workflow = cp.ChatWorkflow(generator=FailingGenerator(fail_after=0))
+    workflow = agents.ChatWorkflow(generator=FailingGenerator(fail_after=0))
 
     # By default, will raise an error
     with pytest.raises(WorkflowError):
@@ -37,7 +37,7 @@ async def test_run_raises_error(generator):
 
 async def test_run_returns_chat_with_error(generator):
     # We can define policy to return the chat with error
-    workflow = cp.ChatWorkflow(generator=FailingGenerator(fail_after=0))
+    workflow = agents.ChatWorkflow(generator=FailingGenerator(fail_after=0))
     chat = await workflow.chat("Hello!", role="user").on_error(ErrorPolicy.RETURN).run()
     assert chat.last.content == "Hello!"
     assert chat.last.role == "user"
@@ -45,7 +45,7 @@ async def test_run_returns_chat_with_error(generator):
 
 
 async def test_run_skips_error(generator):
-    workflow = cp.ChatWorkflow(generator=FailingGenerator(fail_after=0))
+    workflow = agents.ChatWorkflow(generator=FailingGenerator(fail_after=0))
 
     # If we choose to skip, we will get the same
     chat = await workflow.chat("Hello!", role="user").on_error(ErrorPolicy.SKIP).run()
@@ -57,7 +57,7 @@ async def test_run_skips_error(generator):
 async def test_run_many_raises_error(generator):
     """Test that errors are handled correctly."""
 
-    workflow = cp.ChatWorkflow(generator=FailingGenerator(fail_after=1))
+    workflow = agents.ChatWorkflow(generator=FailingGenerator(fail_after=1))
 
     # By default, will raise an error
     with pytest.raises(WorkflowError):
@@ -65,7 +65,7 @@ async def test_run_many_raises_error(generator):
 
 
 async def test_run_many_returns_chat_with_error(generator):
-    workflow = cp.ChatWorkflow(generator=FailingGenerator(fail_after=1))
+    workflow = agents.ChatWorkflow(generator=FailingGenerator(fail_after=1))
 
     # If we choose to return, we will get the same
     chats = (
@@ -101,7 +101,7 @@ async def test_run_many_returns_chat_with_error(generator):
 
 
 async def test_run_many_skips_error(generator):
-    workflow = cp.ChatWorkflow(generator=FailingGenerator(fail_after=1))
+    workflow = agents.ChatWorkflow(generator=FailingGenerator(fail_after=1))
 
     # We can skip errors
     chats = (
@@ -117,14 +117,14 @@ async def test_run_many_skips_error(generator):
 
 
 async def test_run_batch_raises_error(generator):
-    workflow = cp.ChatWorkflow(generator=FailingGenerator(fail_after=0))
+    workflow = agents.ChatWorkflow(generator=FailingGenerator(fail_after=0))
 
     with pytest.raises(WorkflowError):
         await workflow.chat("Hello!", role="user").run_batch(inputs=[{}, {}, {}])
 
 
 async def test_run_batch_returns_chat_with_error(generator):
-    workflow = cp.ChatWorkflow(generator=FailingGenerator(fail_after=1))
+    workflow = agents.ChatWorkflow(generator=FailingGenerator(fail_after=1))
 
     chats = (
         await workflow.chat("Hello!", role="user")
@@ -153,7 +153,7 @@ async def test_run_batch_returns_chat_with_error(generator):
 
 
 async def test_run_batch_skips_error(generator):
-    workflow = cp.ChatWorkflow(generator=FailingGenerator(fail_after=1))
+    workflow = agents.ChatWorkflow(generator=FailingGenerator(fail_after=1))
 
     chats = (
         await workflow.chat("Hello!", role="user")
@@ -169,7 +169,7 @@ async def test_run_batch_skips_error(generator):
 
 
 async def test_stream_many_raises_error(generator):
-    workflow = cp.ChatWorkflow(generator=FailingGenerator(fail_after=1))
+    workflow = agents.ChatWorkflow(generator=FailingGenerator(fail_after=1))
 
     with pytest.raises(WorkflowError):
         async for _ in workflow.chat("Hello!", role="user").stream_many(n=3):
@@ -177,7 +177,7 @@ async def test_stream_many_raises_error(generator):
 
 
 async def test_stream_many_returns_chat_with_error(generator):
-    workflow = cp.ChatWorkflow(generator=FailingGenerator(fail_after=1))
+    workflow = agents.ChatWorkflow(generator=FailingGenerator(fail_after=1))
 
     results = []
     async for chat in (
@@ -208,7 +208,7 @@ async def test_stream_many_returns_chat_with_error(generator):
 
 
 async def test_stream_many_skips_error(generator):
-    workflow = cp.ChatWorkflow(generator=FailingGenerator(fail_after=1))
+    workflow = agents.ChatWorkflow(generator=FailingGenerator(fail_after=1))
 
     results = []
     async for chat in (
@@ -224,7 +224,7 @@ async def test_stream_many_skips_error(generator):
 
 
 async def test_stream_batch_raises_error(generator):
-    workflow = cp.ChatWorkflow(generator=FailingGenerator(fail_after=1))
+    workflow = agents.ChatWorkflow(generator=FailingGenerator(fail_after=1))
 
     with pytest.raises(WorkflowError):
         async for _ in workflow.chat("Hello!", role="user").stream_batch(
@@ -234,7 +234,7 @@ async def test_stream_batch_raises_error(generator):
 
 
 async def test_stream_batch_returns_chat_with_error(generator):
-    workflow = cp.ChatWorkflow(generator=FailingGenerator(fail_after=1))
+    workflow = agents.ChatWorkflow(generator=FailingGenerator(fail_after=1))
 
     results = []
     async for chat in (
@@ -265,7 +265,7 @@ async def test_stream_batch_returns_chat_with_error(generator):
 
 
 async def test_stream_batch_skips_error(generator):
-    workflow = cp.ChatWorkflow(generator=FailingGenerator(fail_after=1))
+    workflow = agents.ChatWorkflow(generator=FailingGenerator(fail_after=1))
 
     results = []
     async for chat in (

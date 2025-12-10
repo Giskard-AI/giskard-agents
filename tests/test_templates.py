@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 from pydantic import BaseModel
 
-from counterpoint.templates import MessageTemplate, PromptsManager
+from giskard.agents.templates import MessageTemplate, PromptsManager
 
 
 @pytest.fixture

@@ -3,9 +3,9 @@ from typing import Generic, Literal, Type, TypeVar
 from litellm import Message as LiteLLMMessage
 from pydantic import BaseModel, Field
 
-from counterpoint.context import RunContext
-from counterpoint.errors.serializable import Error
-from counterpoint.tools import ToolCall
+from .context import RunContext
+from .errors.serializable import Error
+from .tools import ToolCall
 
 Role = Literal["assistant", "user", "system", "tool"]
 

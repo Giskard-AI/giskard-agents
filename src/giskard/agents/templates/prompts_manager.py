@@ -5,8 +5,7 @@ from jinja2 import Template
 from pydantic import BaseModel, Field
 from typing_extensions import deprecated
 
-from counterpoint.chat import Message
-
+from ..chat import Message
 from .environment import create_message_environment
 
 

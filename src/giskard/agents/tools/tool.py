@@ -1,4 +1,4 @@
-"""Core tool functionality for Counterpoint."""
+"""Core tool functionality for Giskard Agents."""
 
 import inspect
 from typing import Any, Callable, Literal, TypeVar
@@ -6,9 +6,8 @@ from typing import Any, Callable, Literal, TypeVar
 import logfire_api as logfire
 from pydantic import BaseModel, Field, create_model
 
-from counterpoint.context import RunContext
-from counterpoint.errors.serializable import Error
-
+from ..context import RunContext
+from ..errors.serializable import Error
 from ._docstring_parser import parse_docstring
 
 F = TypeVar("F", bound=Callable[..., Any])

@@ -1,6 +1,6 @@
-# Counterpoint
+# Giskard Agents
 
-Counterpoint is a lightweight library that orchestrates LLM completions and agents in parallel workflows. Just as musical counterpoint weaves together rhythmically and melodically independent voices into a cohesive composition, Counterpoint enables multiple AI workflows to run independently but in a _punctus contra punctum_ synchrony.
+Giskard Agents is a lightweight library that orchestrates LLM completions and agents in parallel workflows. It enables multiple AI workflows to run independently while maintaining coordination and synchronization between them.
 
 ## Requirements
 
@@ -13,13 +13,13 @@ Counterpoint is a lightweight library that orchestrates LLM completions and agen
 Install the package:
 
 ```bash
-uv add counterpoint
+uv add giskard-agents
 ```
 
 For development, install with dev dependencies:
 
 ```bash
-uv add counterpoint --dev
+uv add giskard-agents --dev
 ```
 
 # Docs
@@ -37,9 +37,9 @@ Also important to keep in mind: everything is async.
 ### Running a chat
 
 ```python
-import counterpoint as cp
+from giskard import agents
 
-generator = cp.Generator(model="openai/gpt-4o-mini")
+generator = agents.Generator(model="openai/gpt-4o-mini")
 
 # generator.chat automatically creates a workflow that can be run.
 chat = await generator.chat("Hello, how are you?").run()
@@ -106,10 +106,10 @@ chat = await (
 
 ### External templates
 
-For more complicated prompts you can define your template in a separate file. First tell `counterpoint` where to find the templates (you probably want to do this in your `__init__.py` file):
+For more complicated prompts you can define your template in a separate file. First tell `giskard.agents` where to find the templates (you probably want to do this in your `__init__.py` file):
 
 ```python
-cp.set_prompts_path("path/to/the/prompts")
+agents.set_prompts_path("path/to/the/prompts")
 ```
 
 Write your templates in jinja2:
@@ -129,7 +129,7 @@ chat = await (
 ### Multi-message templates
 
 Sometimes you may want to use more complex, multi-message prompts. This is particularly useful when you need a few-shots chat that includes examples.
-For this need, `counterpoint` provides a special syntax to define multi-message prompts.
+For this need, `giskard.agents` provides a special syntax to define multi-message prompts.
 
 ```jinja
 {% message system %}
@@ -186,16 +186,16 @@ assert len(chats) == 2
 
 ## Tools
 
-You can define tools using the `@cp.tool` decorator. Tools will be automatically called when the workflow is run.
+You can define tools using the `@agents.tool` decorator. Tools will be automatically called when the workflow is run.
 
 When defining tools, you need to make sure that all tool arguments have type hints. These will be used to define the tool schema. You must also provide a docstring, which will be used to describe the tool to the LLM. If you include the parameters in the docstring, their descriptions will be automatically added to the tool schema.
 
 This can be combined with all functionalities described earlier. Here's an example:
 
 ```python
-import counterpoint as cp
+from giskard import agents
 
-@cp.tool
+@agents.tool
 def get_weather(city: str) -> str:
     """Get the weather in a city.
 
@@ -226,8 +226,8 @@ Tools can access a `RunContext` object that acts as a storage memory for the run
 The `RunContext` object will be automatically passed to the tool if you specify the type hint.
 
 ```python
-@cp.tool
-def get_weather(city: str, run_context: cp.RunContext) -> str:
+@agents.tool
+def get_weather(city: str, run_context: agents.RunContext) -> str:
     previously_asked_cities = run_context.get("previously_asked_cities", [])
 
     if city in previously_asked_cities:
@@ -254,7 +254,7 @@ assert "Paris" in chat.context.get("previously_asked_cities")
 To initialize the run context, you can pass it to the workflow with the `with_context` method:
 
 ```python
-run_context = cp.RunContext()
+run_context = agents.RunContext()
 run_context.set("previously_asked_cities", ["Paris"])
 
 chat = await (generator.chat("Hello, what's the weather in {{ city }}?")
@@ -292,12 +292,12 @@ for chat in chats:
 
 ### Errors during tool calls
 
-By default, `counterpoint` will catch errors during tool calls and return the error message as a tool result. This will let the agent decide what to do with the error (whether retrying or moving on).
+By default, `giskard.agents` will catch errors during tool calls and return the error message as a tool result. This will let the agent decide what to do with the error (whether retrying or moving on).
 You can change this behavior by passing the `catch=None` on the tool decorator. In this case, the error will be raised and passed to the workflow, which will then handle it according to the workflow error handling policy.
 
 ```python
 # Default behavior, will catch errors
-@cp.tool
+@agents.tool
 def get_weather(city: str) -> str:
     raise ValueError("City not found")
 
@@ -306,7 +306,7 @@ print(result) # "ERROR: City not found"
 
 
 # Opt out of the catch
-@cp.tool(catch=None)
+@agents.tool(catch=None)
 def get_weather(city: str) -> str:
     raise ValueError("City not found")
 

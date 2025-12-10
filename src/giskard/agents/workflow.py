@@ -20,13 +20,13 @@ import logfire_api as logfire
 import tenacity as t
 from pydantic import BaseModel, Field, ValidationError
 
-from counterpoint.chat import Chat, Message, Role
-from counterpoint.context import RunContext
-from counterpoint.errors.serializable import Error
-from counterpoint.errors.workflow_errors import WorkflowError
-from counterpoint.generators import BaseGenerator, GenerationParams
-from counterpoint.templates import MessageTemplate, PromptsManager, get_prompts_manager
-from counterpoint.tools.tool import Tool
+from .chat import Chat, Message, Role
+from .context import RunContext
+from .errors.serializable import Error
+from .errors.workflow_errors import WorkflowError
+from .generators import BaseGenerator, GenerationParams
+from .templates import MessageTemplate, PromptsManager, get_prompts_manager
+from .tools.tool import Tool
 
 
 class TemplateReference(BaseModel):

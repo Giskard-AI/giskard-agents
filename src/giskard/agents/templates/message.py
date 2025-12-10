@@ -2,8 +2,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from counterpoint.chat import Message, Role
-
+from ..chat import Message, Role
 from .environment import _inline_env
 
 

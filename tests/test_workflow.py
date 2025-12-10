@@ -2,14 +2,14 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-import counterpoint as cp
-from counterpoint.chat import Chat
-from counterpoint.generators.litellm_generator import LiteLLMGenerator
-from counterpoint.templates.prompts_manager import PromptsManager
+from giskard import agents
+from giskard.agents.chat import Chat
+from giskard.agents.generators.litellm_generator import LiteLLMGenerator
+from giskard.agents.templates.prompts_manager import PromptsManager
 
 
 async def test_single_run(generator):
-    workflow = cp.ChatWorkflow(generator=generator)
+    workflow = agents.ChatWorkflow(generator=generator)
 
     chat = await (
         workflow.chat("Your name is TestBot.", role="system")
@@ -23,7 +23,7 @@ async def test_single_run(generator):
 async def test_run_many(generator):
     """Test that the workflow runs correctly."""
 
-    workflow = cp.ChatWorkflow(generator=generator)
+    workflow = agents.ChatWorkflow(generator=generator)
 
     chats = await workflow.chat("Hello!", role="user").run_many(n=3)
 
@@ -33,7 +33,7 @@ async def test_run_many(generator):
 async def test_run_batch(generator):
     """Test that the workflow runs correctly."""
 
-    workflow = cp.ChatWorkflow(generator=generator)
+    workflow = agents.ChatWorkflow(generator=generator)
 
     chats = await workflow.chat("Hello {{ n }}!", role="user").run_batch(
         inputs=[{"n": i} for i in range(3)]
@@ -51,7 +51,7 @@ async def test_run_batch(generator):
 
 
 async def test_stream_many(generator):
-    workflow = cp.ChatWorkflow(generator=generator).chat("Hello!", role="user")
+    workflow = agents.ChatWorkflow(generator=generator).chat("Hello!", role="user")
 
     chats = []
     async for chat in workflow.stream_many(3):
@@ -62,7 +62,7 @@ async def test_stream_many(generator):
 
 
 async def test_stream_batch(generator):
-    workflow = cp.ChatWorkflow(generator=generator).chat("Hello!", role="user")
+    workflow = agents.ChatWorkflow(generator=generator).chat("Hello!", role="user")
 
     chats = []
     async for chat in workflow.stream_batch(
@@ -78,7 +78,7 @@ async def test_stream_batch(generator):
 
 
 async def test_workflow_with_mixed_templates(generator: LiteLLMGenerator):
-    workflow = cp.ChatWorkflow(
+    workflow = agents.ChatWorkflow(
         generator=generator,
         prompt_manager=PromptsManager(
             default_prompts_path=Path(__file__).parent / "data" / "prompts"
@@ -120,7 +120,7 @@ async def test_workflow_with_mixed_templates(generator: LiteLLMGenerator):
 
 
 async def test_output_format(generator):
-    workflow = cp.ChatWorkflow(generator=generator)
+    workflow = agents.ChatWorkflow(generator=generator)
 
     class SimpleOutput(BaseModel):
         mood: str

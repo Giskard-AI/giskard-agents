@@ -1,7 +1,7 @@
 import tempfile
 from pathlib import Path
 
-from counterpoint.templates.prompts_manager import PromptsManager
+from giskard.agents.templates.prompts_manager import PromptsManager
 
 
 async def test_default_namespace_template():

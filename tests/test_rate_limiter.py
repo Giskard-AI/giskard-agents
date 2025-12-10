@@ -2,7 +2,7 @@ import asyncio
 import datetime
 import time
 
-from counterpoint.rate_limiter import RateLimiter
+from giskard.agents.rate_limiter import RateLimiter
 
 
 class MockRateLimitError(Exception):

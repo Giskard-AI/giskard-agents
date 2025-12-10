@@ -1,7 +1,7 @@
 import pytest
 from pydantic import BaseModel
 
-from counterpoint.chat import Chat, Message
+from giskard.agents.chat import Chat, Message
 
 
 def test_chat_output():

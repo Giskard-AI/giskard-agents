@@ -2,10 +2,10 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from counterpoint.chat import Message
-from counterpoint.generators.base import BaseGenerator, GenerationParams, Response
-from counterpoint.generators.mixins import WithRetryPolicy
-from counterpoint.generators.retry import RetryPolicy
+from giskard.agents.chat import Message
+from giskard.agents.generators.base import BaseGenerator, GenerationParams, Response
+from giskard.agents.generators.mixins import WithRetryPolicy
+from giskard.agents.generators.retry import RetryPolicy
 
 
 class RetriableError(BaseException):

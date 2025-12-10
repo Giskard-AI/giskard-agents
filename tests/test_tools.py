@@ -4,8 +4,8 @@ from typing import List
 
 import pytest
 
-import counterpoint as cp
-from counterpoint.tools import Tool, tool
+from giskard import agents
+from giskard.agents.tools import Tool, tool
 
 
 def test_tool_decorator():
@@ -84,7 +84,7 @@ async def test_tool_with_methods():
 async def test_tool_run(generator):
     """Test that the tool runs correctly."""
 
-    @cp.tool
+    @agents.tool
     def get_weather(city: str) -> str:
         """Get the weather in a city.
 
@@ -110,7 +110,7 @@ async def test_tool_run(generator):
 async def test_tool_catches_errors(generator):
     """Test that the tool catches errors correctly."""
 
-    @cp.tool
+    @agents.tool
     def get_weather(city: str) -> str:
         raise ValueError("City not found")
 
@@ -125,7 +125,7 @@ async def test_tool_catches_errors(generator):
 async def test_tool_catches_errors_with_async_function(generator):
     """Test that the tool catches errors correctly."""
 
-    @cp.tool
+    @agents.tool
     async def get_weather(city: str) -> str:
         raise ValueError("City not found")
 
@@ -140,7 +140,7 @@ async def test_tool_catches_errors_with_async_function(generator):
 async def test_tool_does_not_catch_errors(generator):
     """Test that the tool catches errors correctly."""
 
-    @cp.tool(catch=None)
+    @agents.tool(catch=None)
     def get_weather(city: str) -> str:
         raise ValueError("City not found")
 
@@ -155,7 +155,7 @@ async def test_tool_does_not_catch_errors(generator):
 async def test_tool_does_not_catch_errors_with_async_function(generator):
     """Test that the tool catches errors correctly."""
 
-    @cp.tool(catch=None)
+    @agents.tool(catch=None)
     async def get_weather(city: str) -> str:
         raise ValueError("City not found")
 
@@ -171,7 +171,7 @@ async def test_tool_method_catches_errors(generator):
     """Test that the tool method catches errors correctly."""
 
     class Weather:
-        @cp.tool
+        @agents.tool
         def get_weather(self, city: str) -> str:
             raise ValueError("City not found")
 

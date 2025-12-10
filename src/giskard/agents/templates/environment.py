@@ -8,7 +8,7 @@ from jinja2.ext import Extension
 from jinja2.loaders import FileSystemLoader, PrefixLoader
 from pydantic import BaseModel
 
-from counterpoint.chat import Message
+from ..chat import Message
 
 
 def _finalize_pydantic(value: Any) -> Any:
