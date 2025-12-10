@@ -1,16 +1,18 @@
 """Unit tests for generator serialization and deserialization."""
 
-from giskard.agents.generators import BaseGenerator, Generator, GenerationParams
+import uuid
+
+from pydantic import Field
+
+from giskard.agents.chat import Message
+from giskard.agents.generators import BaseGenerator, GenerationParams, Generator
+from giskard.agents.generators.base import Response
 from giskard.agents.generators.litellm_generator import LiteLLMGenerator
 from giskard.agents.generators.retry import RetryPolicy
 from giskard.agents.rate_limiter import RateLimiter
-from giskard.agents.tools import Tool
-from giskard.agents.generators.base import Response
-from giskard.agents.chat import Message
-from giskard.agents.workflow import ChatWorkflow, ErrorPolicy
 from giskard.agents.templates import MessageTemplate
-import uuid
-from pydantic import Field
+from giskard.agents.tools import Tool
+from giskard.agents.workflow import ChatWorkflow, ErrorPolicy
 
 
 def test_generator_serialization():
