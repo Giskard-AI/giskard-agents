@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 from pydantic import BaseModel
 
-from giskard.agents.templates import MessageTemplate, PromptsManager
+from giskard.agents.templates import LLMFormattable, MessageTemplate, PromptsManager
 
 
 @pytest.fixture
@@ -107,3 +107,173 @@ async def test_pydantic_json_rendering_with_prompts_manager():
     "description": "The Great Gatsby is a novel by F. Scott Fitzgerald."
 }"""
         assert messages[0].content == f"Here is a book:\n{expected_json}"
+
+
+def test_llm_formattable_protocol_explicit_implementation():
+    """Test that a class explicitly implementing the protocol is formatted correctly."""
+    class CustomFormatter(LLMFormattable):
+        def __init__(self, value: str):
+            self.value = value
+
+        def format_for_llm(self) -> str:
+            return f"Formatted: {self.value}"
+
+    # Verify it matches the protocol
+    formatter = CustomFormatter("test")
+    assert isinstance(formatter, LLMFormattable)
+
+    template = MessageTemplate(
+        role="user",
+        content_template="Content: {{ obj }}",
+    )
+
+    message = template.render(obj=formatter)
+    assert message.content == "Content: Formatted: test"
+
+
+def test_llm_formattable_protocol_structural_typing():
+    """Test that a class with the method (without explicit protocol) is formatted correctly."""
+    class DuckTypedFormatter:
+        """Class that implements the protocol method without explicitly mentioning it."""
+
+        def __init__(self, data: str):
+            self.data = data
+
+        def format_for_llm(self) -> str:
+            return f"Duck-typed: {self.data}"
+
+    # Verify it matches the protocol (structural typing)
+    formatter = DuckTypedFormatter("example")
+    assert isinstance(formatter, LLMFormattable)
+
+    template = MessageTemplate(
+        role="user",
+        content_template="Result: {{ obj }}",
+    )
+
+    message = template.render(obj=formatter)
+    assert message.content == "Result: Duck-typed: example"
+
+
+def test_llm_formattable_method_with_params_not_called():
+    """Test that a method requiring params gracefully falls back when called.
+    
+    Note: This is a Python limitation - @runtime_checkable only checks method
+    existence, not signatures. So isinstance() will pass, but calling the method
+    will raise TypeError. We catch this and fall back to default behavior.
+    """
+    class WrongSignature:
+        """Class with format_for_llm that requires params - matches but fails when called."""
+
+        def __init__(self, value: str):
+            self.value = value
+            self.called = False
+
+        def format_for_llm(self, param: str) -> str:  # Wrong signature - requires param
+            self.called = True
+            return f"Should not be called: {self.value}"
+
+    obj = WrongSignature("test")
+    # @runtime_checkable limitation: only checks method existence, not signature
+    # So this will pass isinstance() even though signature is wrong
+    assert isinstance(obj, LLMFormattable)  # This is the Python limitation
+
+    template = MessageTemplate(
+        role="user",
+        content_template="Value: {{ obj }}",
+    )
+
+    # Should gracefully fall back to default string representation when TypeError is caught
+    message = template.render(obj=obj)
+    assert not obj.called  # Method shouldn't be successfully called
+    # The object will be rendered as string representation
+    assert f"Value: {str(obj)}" == message.content
+
+
+def test_llm_formattable_pydantic_with_wrong_signature_falls_back_to_model_dump():
+    """Test that a Pydantic model with format_for_llm (wrong signature) falls back to model_dump()."""
+    class FormattablePydanticWrongSignature(BaseModel):
+        """A Pydantic class with format_for_llm that requires params - should fall back to JSON."""
+
+        value: str
+        number: int
+
+        def format_for_llm(self, param: str) -> str:  # Wrong signature - requires param
+            return f"Should not be called: {self.value}"
+
+    obj = FormattablePydanticWrongSignature(value="test", number=42)
+    # @runtime_checkable limitation: only checks method existence, not signature
+    # So this will pass isinstance() even though signature is wrong
+    assert isinstance(obj, LLMFormattable)  # This is the Python limitation
+    assert isinstance(obj, BaseModel)
+
+    template = MessageTemplate(
+        role="user",
+        content_template="Content: {{ obj }}",
+    )
+
+    # Should gracefully fall back to Pydantic JSON dump when TypeError is caught
+    message = template.render(obj=obj)
+    # Should use Pydantic JSON serialization, not the protocol method
+    expected_json = """{
+    "value": "test",
+    "number": 42
+}"""
+    assert message.content == f"Content: {expected_json}"
+
+
+def test_llm_formattable_method_returns_non_string_still_called():
+    """Test that a method returning non-string still matches and is called (return type not checked at runtime)."""
+    class WrongReturnType:
+        """Class with format_for_llm that returns non-string - matches protocol but returns wrong type."""
+
+        def __init__(self, value: str):
+            self.value = value
+            self.called = False
+
+        def format_for_llm(self) -> int:  # Wrong return type annotation, but runtime doesn't check
+            self.called = True
+            return 42  # Returns int, not str
+
+    obj = WrongReturnType("test")
+    # @runtime_checkable only checks method existence and signature (params), not return type
+    # So this will match the protocol
+    assert isinstance(obj, LLMFormattable)
+
+    template = MessageTemplate(
+        role="user",
+        content_template="Value: {{ obj }}",
+    )
+
+    # The method will be called and return 42, which will be converted to string in template
+    message = template.render(obj=obj)
+    assert obj.called
+    # The integer 42 will be converted to string "42" in the template
+    assert message.content == "Value: 42"
+
+
+def test_llm_formattable_takes_precedence_over_pydantic():
+    """Test that LLMFormattable protocol takes precedence over Pydantic BaseModel."""
+    class FormattablePydantic(BaseModel):
+        """A Pydantic class that also implements the protocol method."""
+
+        value: str
+
+        def format_for_llm(self) -> str:
+            return f"Protocol format: {self.value}"
+
+    obj = FormattablePydantic(value="test")
+    # Should match the protocol due to structural typing
+    assert isinstance(obj, LLMFormattable)
+    assert isinstance(obj, BaseModel)
+
+    template = MessageTemplate(
+        role="user",
+        content_template="Content: {{ obj }}",
+    )
+
+    message = template.render(obj=obj)
+    # Should use protocol method, not Pydantic JSON dump
+    assert message.content == "Content: Protocol format: test"
+    assert "Protocol format" in message.content
+    assert '"value"' not in message.content  # Should not be JSON
