@@ -3,7 +3,6 @@ from typing import Any
 from pydantic import BaseModel
 
 from ..chat import Message, Role
-
 from .environment import _inline_env
 
 

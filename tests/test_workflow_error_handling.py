@@ -1,5 +1,5 @@
-from pydantic import Field, PrivateAttr
 import pytest
+from pydantic import Field, PrivateAttr
 
 from giskard import agents
 from giskard.agents.errors import WorkflowError

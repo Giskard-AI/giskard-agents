@@ -5,11 +5,11 @@ import pytest
 from litellm import ModelResponse
 
 from giskard.agents.chat import Chat, Message
-from giskard.agents.generators.base import Response
+from giskard.agents.generators.base import GenerationParams, Response
 from giskard.agents.generators.litellm_generator import LiteLLMGenerator
-from giskard.agents.workflow import ChatWorkflow
 from giskard.agents.rate_limiter import RateLimiter
 from giskard.agents.templates import MessageTemplate
+from giskard.agents.workflow import ChatWorkflow
 
 
 @pytest.fixture
@@ -138,3 +138,32 @@ def test_generator_with_params():
     assert int_generator.params.response_format is int
     assert new_generator.params.response_format is None
     assert generator.params.response_format is None
+
+
+async def test_generator_with_params_overwrite(mock_response):
+    # ARRANGE: Create a generator with base parameters.
+    generator = LiteLLMGenerator(model="test-model").with_params(
+        temperature=0.5,  # This should be preserved.
+        max_tokens=100,  # This should be overwritten.
+    )
+
+    with patch(
+        "giskard.agents.generators.litellm_generator.acompletion",
+        return_value=mock_response,
+    ) as mock_acompletion:
+        # ACT: Call complete() with overriding parameters.
+        await generator.complete(
+            messages=[Message(role="user", content="Test message")],
+            params=GenerationParams(max_tokens=200),
+        )
+
+        # ASSERT: Verify that parameters were merged correctly.
+        mock_acompletion.assert_called_once()
+        call_kwargs = mock_acompletion.call_args.kwargs
+        assert (
+            call_kwargs["temperature"] == 0.5
+        )  # Preserved from the generator's params.
+        assert (
+            call_kwargs["max_tokens"] == 200
+        )  # Overwritten by the complete() call's params.
+        assert call_kwargs["model"] == "test-model"
