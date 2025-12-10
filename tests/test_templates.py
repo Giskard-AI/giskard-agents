@@ -111,6 +111,7 @@ async def test_pydantic_json_rendering_with_prompts_manager():
 
 def test_llm_formattable_protocol_explicit_implementation():
     """Test that a class explicitly implementing the protocol is formatted correctly."""
+
     class CustomFormatter(LLMFormattable):
         def __init__(self, value: str):
             self.value = value
@@ -133,6 +134,7 @@ def test_llm_formattable_protocol_explicit_implementation():
 
 def test_llm_formattable_protocol_structural_typing():
     """Test that a class with the method (without explicit protocol) is formatted correctly."""
+
     class DuckTypedFormatter:
         """Class that implements the protocol method without explicitly mentioning it."""
 
@@ -157,11 +159,12 @@ def test_llm_formattable_protocol_structural_typing():
 
 def test_llm_formattable_method_with_params_not_called():
     """Test that a method requiring params gracefully falls back when called.
-    
+
     Note: This is a Python limitation - @runtime_checkable only checks method
     existence, not signatures. So isinstance() will pass, but calling the method
     will raise TypeError. We catch this and fall back to default behavior.
     """
+
     class WrongSignature:
         """Class with format_for_llm that requires params - matches but fails when called."""
 
@@ -192,6 +195,7 @@ def test_llm_formattable_method_with_params_not_called():
 
 def test_llm_formattable_pydantic_with_wrong_signature_falls_back_to_model_dump():
     """Test that a Pydantic model with format_for_llm (wrong signature) falls back to model_dump()."""
+
     class FormattablePydanticWrongSignature(BaseModel):
         """A Pydantic class with format_for_llm that requires params - should fall back to JSON."""
 
@@ -224,6 +228,7 @@ def test_llm_formattable_pydantic_with_wrong_signature_falls_back_to_model_dump(
 
 def test_llm_formattable_method_returns_non_string_still_called():
     """Test that a method returning non-string still matches and is called (return type not checked at runtime)."""
+
     class WrongReturnType:
         """Class with format_for_llm that returns non-string - matches protocol but returns wrong type."""
 
@@ -231,7 +236,9 @@ def test_llm_formattable_method_returns_non_string_still_called():
             self.value = value
             self.called = False
 
-        def format_for_llm(self) -> int:  # Wrong return type annotation, but runtime doesn't check
+        def format_for_llm(
+            self,
+        ) -> int:  # Wrong return type annotation, but runtime doesn't check
             self.called = True
             return 42  # Returns int, not str
 
@@ -254,6 +261,7 @@ def test_llm_formattable_method_returns_non_string_still_called():
 
 def test_llm_formattable_takes_precedence_over_pydantic():
     """Test that LLMFormattable protocol takes precedence over Pydantic BaseModel."""
+
     class FormattablePydantic(BaseModel):
         """A Pydantic class that also implements the protocol method."""
 
