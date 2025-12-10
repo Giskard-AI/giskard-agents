@@ -15,7 +15,7 @@ from ..chat import Message
 class LLMFormattable(Protocol):
     """Protocol for objects that can format themselves for LLM consumption."""
 
-    def format_for_llm(self) -> str:
+    def _repr_prompt_(self) -> str:
         """Format the object for LLM consumption.
 
         Returns
@@ -28,12 +28,7 @@ class LLMFormattable(Protocol):
 
 def _finalize_value(value: Any) -> Any:
     if isinstance(value, LLMFormattable):
-        try:
-            return value.format_for_llm()
-        except TypeError:
-            # Method exists but has wrong signature (e.g., requires arguments)
-            # Fall through to next check (Pydantic or default)
-            pass
+        return value._repr_prompt_()
     if isinstance(value, BaseModel):
         return json.dumps(value.model_dump(), indent=4)
     return value

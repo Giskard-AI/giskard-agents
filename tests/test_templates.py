@@ -116,7 +116,7 @@ def test_llm_formattable_protocol_explicit_implementation():
         def __init__(self, value: str):
             self.value = value
 
-        def format_for_llm(self) -> str:
+        def _repr_prompt_(self) -> str:
             return f"Formatted: {self.value}"
 
     # Verify it matches the protocol
@@ -141,7 +141,7 @@ def test_llm_formattable_protocol_structural_typing():
         def __init__(self, data: str):
             self.data = data
 
-        def format_for_llm(self) -> str:
+        def _repr_prompt_(self) -> str:
             return f"Duck-typed: {self.data}"
 
     # Verify it matches the protocol (structural typing)
@@ -157,22 +157,22 @@ def test_llm_formattable_protocol_structural_typing():
     assert message.content == "Result: Duck-typed: example"
 
 
-def test_llm_formattable_method_with_params_not_called():
-    """Test that a method requiring params gracefully falls back when called.
+def test_llm_formattable_method_with_params_raises_type_error():
+    """Test that a method requiring params raises TypeError when called.
 
     Note: This is a Python limitation - @runtime_checkable only checks method
     existence, not signatures. So isinstance() will pass, but calling the method
-    will raise TypeError. We catch this and fall back to default behavior.
+    will raise TypeError.
     """
 
     class WrongSignature:
-        """Class with format_for_llm that requires params - matches but fails when called."""
+        """Class with _repr_prompt_ that requires params - matches but fails when called."""
 
         def __init__(self, value: str):
             self.value = value
             self.called = False
 
-        def format_for_llm(self, param: str) -> str:  # Wrong signature - requires param
+        def _repr_prompt_(self, param: str) -> str:  # Wrong signature - requires param
             self.called = True
             return f"Should not be called: {self.value}"
 
@@ -186,23 +186,22 @@ def test_llm_formattable_method_with_params_not_called():
         content_template="Value: {{ obj }}",
     )
 
-    # Should gracefully fall back to default string representation when TypeError is caught
-    message = template.render(obj=obj)
+    # Should raise TypeError when trying to call method with wrong signature
+    with pytest.raises(TypeError, match="missing 1 required positional argument"):
+        template.render(obj=obj)
     assert not obj.called  # Method shouldn't be successfully called
-    # The object will be rendered as string representation
-    assert f"Value: {str(obj)}" == message.content
 
 
-def test_llm_formattable_pydantic_with_wrong_signature_falls_back_to_model_dump():
-    """Test that a Pydantic model with format_for_llm (wrong signature) falls back to model_dump()."""
+def test_llm_formattable_pydantic_with_wrong_signature_raises_type_error():
+    """Test that a Pydantic model with _repr_prompt_ (wrong signature) raises TypeError."""
 
     class FormattablePydanticWrongSignature(BaseModel):
-        """A Pydantic class with format_for_llm that requires params - should fall back to JSON."""
+        """A Pydantic class with _repr_prompt_ that requires params - should raise TypeError."""
 
         value: str
         number: int
 
-        def format_for_llm(self, param: str) -> str:  # Wrong signature - requires param
+        def _repr_prompt_(self, param: str) -> str:  # Wrong signature - requires param
             return f"Should not be called: {self.value}"
 
     obj = FormattablePydanticWrongSignature(value="test", number=42)
@@ -216,27 +215,22 @@ def test_llm_formattable_pydantic_with_wrong_signature_falls_back_to_model_dump(
         content_template="Content: {{ obj }}",
     )
 
-    # Should gracefully fall back to Pydantic JSON dump when TypeError is caught
-    message = template.render(obj=obj)
-    # Should use Pydantic JSON serialization, not the protocol method
-    expected_json = """{
-    "value": "test",
-    "number": 42
-}"""
-    assert message.content == f"Content: {expected_json}"
+    # Should raise TypeError when trying to call method with wrong signature
+    with pytest.raises(TypeError, match="missing 1 required positional argument"):
+        template.render(obj=obj)
 
 
 def test_llm_formattable_method_returns_non_string_still_called():
     """Test that a method returning non-string still matches and is called (return type not checked at runtime)."""
 
     class WrongReturnType:
-        """Class with format_for_llm that returns non-string - matches protocol but returns wrong type."""
+        """Class with _repr_prompt_ that returns non-string - matches protocol but returns wrong type."""
 
         def __init__(self, value: str):
             self.value = value
             self.called = False
 
-        def format_for_llm(
+        def _repr_prompt_(
             self,
         ) -> int:  # Wrong return type annotation, but runtime doesn't check
             self.called = True
@@ -267,7 +261,7 @@ def test_llm_formattable_takes_precedence_over_pydantic():
 
         value: str
 
-        def format_for_llm(self) -> str:
+        def _repr_prompt_(self) -> str:
             return f"Protocol format: {self.value}"
 
     obj = FormattablePydantic(value="test")
