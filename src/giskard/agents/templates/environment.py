@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
 from jinja2 import BaseLoader, Environment, StrictUndefined, nodes
 from jinja2.exceptions import TemplateNotFound
@@ -11,7 +11,24 @@ from pydantic import BaseModel
 from ..chat import Message
 
 
-def _finalize_pydantic(value: Any) -> Any:
+@runtime_checkable
+class LLMFormattable(Protocol):
+    """Protocol for objects that can format themselves for LLM consumption."""
+
+    def _repr_prompt_(self) -> str:
+        """Format the object for LLM consumption.
+
+        Returns
+        -------
+        str
+            The formatted string representation of the object.
+        """
+        ...
+
+
+def _finalize_value(value: Any) -> Any:
+    if isinstance(value, LLMFormattable):
+        return value._repr_prompt_()
     if isinstance(value, BaseModel):
         return json.dumps(value.model_dump(), indent=4)
     return value
@@ -23,7 +40,7 @@ _inline_env = Environment(
     keep_trailing_newline=True,
     undefined=StrictUndefined,
     autoescape=False,
-    finalize=_finalize_pydantic,
+    finalize=_finalize_value,
 )
 
 
@@ -88,5 +105,5 @@ def create_message_environment(loader_mapping: dict[str, Path]) -> Environment:
         undefined=StrictUndefined,
         autoescape=False,
         enable_async=True,
-        finalize=_finalize_pydantic,
+        finalize=_finalize_value,
     )

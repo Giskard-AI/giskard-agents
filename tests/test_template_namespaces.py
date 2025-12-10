@@ -1,5 +1,4 @@
 import tempfile
-
 from pathlib import Path
 
 from giskard.agents.templates.prompts_manager import PromptsManager

@@ -1,12 +1,11 @@
 from pathlib import Path
 from typing import Any, Dict, List
-from typing_extensions import deprecated
 
 from jinja2 import Template
 from pydantic import BaseModel, Field
+from typing_extensions import deprecated
 
 from ..chat import Message
-
 from .environment import create_message_environment
 
 
