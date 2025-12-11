@@ -281,8 +281,7 @@ class ChatWorkflow(BaseModel, Generic[OutputType]):
             The workflow instance for method chaining.
         """
         new_tools = self.tools.copy()
-        for tool in tools:
-            new_tools[tool.name] = tool
+        new_tools.update({tool.name: tool for tool in tools})
         return self.model_copy(update={"tools": new_tools})
 
     def with_output(
