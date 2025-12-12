@@ -1,11 +1,10 @@
 from pathlib import Path
 
-from pydantic import BaseModel
-
 from giskard import agents
 from giskard.agents.chat import Chat
 from giskard.agents.generators.litellm_generator import LiteLLMGenerator
 from giskard.agents.templates.prompts_manager import PromptsManager
+from pydantic import BaseModel
 
 
 async def test_single_run(generator):

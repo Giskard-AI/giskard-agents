@@ -1,7 +1,6 @@
 import pytest
-from pydantic import BaseModel
-
 from giskard.agents.chat import Chat, Message
+from pydantic import BaseModel
 
 
 def test_chat_output():

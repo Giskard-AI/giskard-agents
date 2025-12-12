@@ -2,6 +2,7 @@ import asyncio
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any, Literal, Type
 
+from giskard.core import Discriminated, discriminated_base
 from pydantic import BaseModel, Field
 
 from ..chat import Message, Role
@@ -33,7 +34,8 @@ class GenerationParams(BaseModel):
     tools: list[Tool] = Field(default_factory=list)
 
 
-class BaseGenerator(BaseModel, ABC):
+@discriminated_base
+class BaseGenerator(Discriminated, ABC):
     """Base class for all generators."""
 
     params: GenerationParams = Field(default_factory=GenerationParams)
