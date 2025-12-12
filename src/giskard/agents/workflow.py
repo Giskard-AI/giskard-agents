@@ -249,8 +249,7 @@ class ChatWorkflow(BaseModel, Generic[OutputType]):
         """Add a chat message to the workflow."""
         if isinstance(message, str):
             message = MessageTemplate(role=role, content_template=message)
-        self.messages.append(message)
-        return self
+        return self.model_copy(update={"messages": [*self.messages, message]})
 
     def template(self, template_name: str) -> Self:
         """Load messages from a template file.
@@ -266,8 +265,7 @@ class ChatWorkflow(BaseModel, Generic[OutputType]):
             The workflow instance for method chaining.
         """
         template_message = TemplateReference(template_name=template_name)
-        self.messages.append(template_message)
-        return self
+        return self.model_copy(update={"messages": [*self.messages, template_message]})
 
     def with_tools(self, *tools: Tool) -> Self:
         """Add tools to the workflow.
@@ -282,9 +280,9 @@ class ChatWorkflow(BaseModel, Generic[OutputType]):
         ChatWorkflow
             The workflow instance for method chaining.
         """
-        for tool in tools:
-            self.tools[tool.name] = tool
-        return self
+        new_tools = self.tools.copy()
+        new_tools.update({tool.name: tool for tool in tools})
+        return self.model_copy(update={"tools": new_tools})
 
     def with_output(
         self: "ChatWorkflow[Any]",
@@ -308,10 +306,16 @@ class ChatWorkflow(BaseModel, Generic[OutputType]):
         ChatWorkflow
             The workflow instance for method chaining.
         """
-        self.output_model = output_model
-        self.output_model_strict = strict
-        self.output_model_num_retries = num_retries
-        return cast("ChatWorkflow[NewOutputType]", self)
+        return cast(
+            "ChatWorkflow[NewOutputType]",
+            self.model_copy(
+                update={
+                    "output_model": output_model,
+                    "output_model_strict": strict,
+                    "output_model_num_retries": num_retries,
+                }
+            ),
+        )
 
     def with_inputs(self, **kwargs: Any) -> Self:
         """Set the input for the workflow.
@@ -326,18 +330,15 @@ class ChatWorkflow(BaseModel, Generic[OutputType]):
         ChatWorkflow
             The workflow instance for method chaining.
         """
-        self.inputs.update(kwargs)
-        return self
+        return self.model_copy(update={"inputs": {**self.inputs, **kwargs}})
 
     def with_context(self, context: RunContext) -> Self:
         """Set the context for the workflow."""
-        self.context = context
-        return self
+        return self.model_copy(update={"context": context})
 
     def on_error(self, error_policy: ErrorPolicy) -> Self:
         """Set the error handling behavior for the workflow."""
-        self.error_policy = error_policy
-        return self
+        return self.model_copy(update={"error_policy": error_policy})
 
     @asynccontextmanager
     async def steps(self, max_steps: int | None = None) -> AsyncIterator[StepGenerator]:
