@@ -3,7 +3,6 @@
 from typing import List
 
 import pytest
-
 from giskard import agents
 from giskard.agents.tools import Tool, tool
 

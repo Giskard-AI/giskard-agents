@@ -42,6 +42,9 @@ dev = [
 asyncio_mode = "auto"
 testpaths = ["tests"]
 
+[tool.ruff.lint.isort.sections]
+"my_packages" = ["giskard"]
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/giskard"]
 

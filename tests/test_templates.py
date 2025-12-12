@@ -2,9 +2,8 @@ import tempfile
 from pathlib import Path
 
 import pytest
-from pydantic import BaseModel
-
 from giskard.agents.templates import LLMFormattable, MessageTemplate, PromptsManager
+from pydantic import BaseModel
 
 
 @pytest.fixture

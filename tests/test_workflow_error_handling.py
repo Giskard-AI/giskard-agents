@@ -1,9 +1,8 @@
 import pytest
-from pydantic import Field, PrivateAttr
-
 from giskard import agents
 from giskard.agents.errors import WorkflowError
 from giskard.agents.workflow import ErrorPolicy
+from pydantic import Field, PrivateAttr
 
 
 class FailingGenerator(agents.generators.BaseGenerator):

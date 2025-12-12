@@ -2,8 +2,6 @@
 
 import uuid
 
-from pydantic import Field
-
 from giskard.agents.chat import Message
 from giskard.agents.generators import BaseGenerator, GenerationParams, Generator
 from giskard.agents.generators.base import Response
@@ -13,6 +11,7 @@ from giskard.agents.rate_limiter import RateLimiter
 from giskard.agents.templates import MessageTemplate
 from giskard.agents.tools import Tool
 from giskard.agents.workflow import ChatWorkflow, ErrorPolicy
+from pydantic import Field
 
 
 def test_generator_serialization():

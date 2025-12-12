@@ -2,14 +2,13 @@ import time
 from unittest.mock import patch
 
 import pytest
-from litellm import ModelResponse
-
 from giskard.agents.chat import Chat, Message
 from giskard.agents.generators.base import GenerationParams, Response
 from giskard.agents.generators.litellm_generator import LiteLLMGenerator
 from giskard.agents.rate_limiter import RateLimiter
 from giskard.agents.templates import MessageTemplate
 from giskard.agents.workflow import ChatWorkflow
+from litellm import ModelResponse
 
 
 @pytest.fixture

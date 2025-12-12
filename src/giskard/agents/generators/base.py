@@ -2,9 +2,8 @@ import asyncio
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any, Literal, Type
 
-from pydantic import BaseModel, Field
-
 from giskard.core import Discriminated, discriminated_base
+from pydantic import BaseModel, Field
 
 from ..chat import Message, Role
 from ..tools import Tool

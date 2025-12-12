@@ -1,12 +1,11 @@
 from typing import Any
 
 import pytest
-from pydantic import BaseModel, Field, PrivateAttr, ValidationError
-
 from giskard import agents
 from giskard.agents.chat import Message
 from giskard.agents.generators import BaseGenerator, GenerationParams
 from giskard.agents.generators.base import Response
+from pydantic import BaseModel, Field, PrivateAttr, ValidationError
 
 
 class DummyOutputModel(BaseModel):
