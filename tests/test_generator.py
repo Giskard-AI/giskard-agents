@@ -147,7 +147,7 @@ def test_generator_with_params_and_rate_limiter():
     # Verify initial state
     assert generator.rate_limiter is rate_limiter
 
-    # Call with_params and verify rate limiter is preserved (deep copy creates new instance)
+    # Call with_params and verify rate limiter is preserved
     generator_with_params = generator.with_params(temperature=0.5, max_tokens=100)
     assert generator_with_params.params.temperature == 0.5
     assert generator_with_params.params.max_tokens == 100
@@ -161,7 +161,7 @@ def test_generator_with_params_and_rate_limiter():
 
 
 def test_generator_serialization_keep_rate_limiter_instance():
-    """Test that with_params works correctly with a rate limiter."""
+    """Test that serializing and deserializing a generator preserves the rate limiter instance."""
     rate_limiter = RateLimiter.from_rpm(rpm=100, max_concurrent=5)
     generator = LiteLLMGenerator(model="test-model", rate_limiter=rate_limiter)
 
@@ -172,7 +172,7 @@ def test_generator_serialization_keep_rate_limiter_instance():
 
 
 def test_generator_serialization_recreate_rate_limiter_instance_if_not_in_registry():
-    """Test that with_params works correctly with a rate limiter."""
+    """Test that deserializing a generator recreates the rate limiter if it's not in the registry."""
     rate_limiter = RateLimiter.from_rpm(rpm=100, max_concurrent=5)
     generator = LiteLLMGenerator(model="test-model", rate_limiter=rate_limiter)
 
