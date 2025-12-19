@@ -3,7 +3,7 @@ import time
 import uuid
 from contextlib import asynccontextmanager
 
-from pydantic import BaseModel, Field, PrivateAttr
+from pydantic import BaseModel, Field, PrivateAttr, model_validator
 
 
 class RateLimiterStrategy(BaseModel):
@@ -11,7 +11,7 @@ class RateLimiterStrategy(BaseModel):
     max_concurrent: int = Field(default=5)
 
 
-class RateLimiter(BaseModel):
+class RateLimiter(BaseModel, frozen=True):
     rate_limiter_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     strategy: RateLimiterStrategy
 
@@ -79,6 +79,28 @@ class RateLimiter(BaseModel):
 
     def release(self) -> None:
         self._semaphore.release()
+
+    @model_validator(mode="wrap")
+    @classmethod
+    def _validate_singleton(cls, v, handler, _info) -> "RateLimiter":
+        # Determine the rate limiter ID from the input
+        rate_limiter_id = None
+        if isinstance(v, dict):
+            rate_limiter_id = v.get("rate_limiter_id")
+        elif isinstance(v, RateLimiter):
+            rate_limiter_id = v.rate_limiter_id
+
+        # If ID exists in our global registry, return the singleton
+        if rate_limiter_id and rate_limiter_id in _rate_limiters:
+            return _rate_limiters[rate_limiter_id]
+
+        # 3. Otherwise, proceed with standard validation/creation
+        instance = handler(v)
+        return instance
+
+    def __deepcopy__(self, memo) -> "RateLimiter":
+        # RateLimiter is a shared resource, so we can just return the same instance.
+        return self
 
 
 _rate_limiters: dict[str, RateLimiter] = {}

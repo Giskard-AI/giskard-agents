@@ -121,9 +121,9 @@ async def test_rate_limiter_max_concurrent():
 
 def test_can_serialize_rate_limiter():
     rate_limiter = RateLimiter.from_rpm(
-        rpm=600, max_concurrent=10, rate_limiter_id="test"
+        rpm=600, max_concurrent=10, rate_limiter_id="test_can_serialize_rate_limiter"
     )
     assert rate_limiter.model_dump() == {
-        "rate_limiter_id": "test",
+        "rate_limiter_id": "test_can_serialize_rate_limiter",
         "strategy": {"min_interval": 0.1, "max_concurrent": 10},
     }
