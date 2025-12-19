@@ -119,7 +119,7 @@ async def test_generator_without_rate_limiter(mock_response):
 
 
 async def test_generator_rate_limiter_context():
-    rate_limiter = RateLimiter.from_rpm(rpm=100, rate_limiter_id="test")
+    rate_limiter = RateLimiter.from_rpm(rpm=100, rate_limiter_id="test_generator_rate_limiter_context")
     generator = LiteLLMGenerator(model="test-model", rate_limiter="test")
     assert generator.rate_limiter is rate_limiter
 
