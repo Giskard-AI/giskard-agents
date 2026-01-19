@@ -127,3 +127,26 @@ def test_can_serialize_rate_limiter():
         "rate_limiter_id": "test_can_serialize_rate_limiter",
         "strategy": {"min_interval": 0.1, "max_concurrent": 10},
     }
+
+
+def test_rate_limiter_singleton_missing_pydantic_private_attrs_repro():
+    """Reproduce missing `__pydantic_private__` when singleton is returned from a model validator.
+
+    Under Pydantic v2, returning anything other than `self` from a top-level model validator
+    is unsupported. The singleton pattern currently implemented in `RateLimiter` uses a
+    `@model_validator(mode="wrap")` that may return an existing instance from a registry.
+
+    The observed behavior is that a second call to `RateLimiter.from_rpm` with the same
+    `rate_limiter_id` returns an object missing Pydantic private storage, so accessing private
+    attrs like `_semaphore` raises an AttributeError.
+    """
+    rate_limiter_id = "test_rate_limiter_singleton_missing_pydantic_private_attrs_repro"
+
+    rl1 = RateLimiter.from_rpm(rpm=500, rate_limiter_id=rate_limiter_id)
+    assert hasattr(rl1, "__pydantic_private__")
+    assert rl1._semaphore is not None
+
+    rl2 = RateLimiter.from_rpm(rpm=500, rate_limiter_id=rate_limiter_id)
+    assert rl2 is not rl1
+    assert not hasattr(rl2, "__pydantic_private__")
+    rl2._semaphore
