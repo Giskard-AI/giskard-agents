@@ -92,8 +92,11 @@ class Chat(BaseModel, Generic[OutputType]):
     def failed(self) -> bool:
         return self.error is not None
 
-    def clone(self, deep: bool = True) -> "Chat":
-        return self.model_copy(deep=deep)
+    def clone(self, deep: bool = True, preserve_context: bool = True) -> "Chat":
+        cloned = self.model_copy(deep=deep)
+        if preserve_context:
+            cloned.context = self.context
+        return cloned
 
     def add(self, message: Message) -> "Chat":
         self.messages.append(message)
