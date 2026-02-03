@@ -86,19 +86,21 @@ class WithRetryPolicy(BaseModel, ABC):
         base_delay: float | None = None,
         max_delay: float | None = None,
     ) -> "WithRetryPolicy":
-        params = {"max_retries": max_retries}
+        current_policy = (
+            self.retry_policy.model_dump(exclude_unset=True)
+            if self.retry_policy is not None
+            else {}
+        )
 
-        if base_delay is not None:
-            params["base_delay"] = base_delay
-        elif self.retry_policy is not None:
-            params["base_delay"] = self.retry_policy.base_delay
+        patch = {
+            "max_retries": max_retries,
+            "base_delay": base_delay,
+            "max_delay": max_delay,
+        }
 
-        if max_delay is not None:
-            params["max_delay"] = max_delay
-        elif self.retry_policy is not None:
-            params["max_delay"] = self.retry_policy.max_delay
+        new_policy = current_policy | {k: v for k, v in patch.items() if v is not None}
 
-        return self.model_copy(update={"retry_policy": RetryPolicy(**params)})
+        return self.model_copy(update={"retry_policy": RetryPolicy(**new_policy)})
 
     async def _complete(
         self, messages: list[Message], params: GenerationParams | None = None
