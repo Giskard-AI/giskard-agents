@@ -84,6 +84,7 @@ class WithRetryPolicy(BaseModel, ABC):
         max_retries: int,
         *,
         base_delay: float | None = None,
+        max_delay: float | None = None,
     ) -> "WithRetryPolicy":
         params = {"max_retries": max_retries}
 
@@ -91,6 +92,11 @@ class WithRetryPolicy(BaseModel, ABC):
             params["base_delay"] = base_delay
         elif self.retry_policy is not None:
             params["base_delay"] = self.retry_policy.base_delay
+
+        if max_delay is not None:
+            params["max_delay"] = max_delay
+        elif self.retry_policy is not None:
+            params["max_delay"] = self.retry_policy.max_delay
 
         return self.model_copy(update={"retry_policy": RetryPolicy(**params)})
 
