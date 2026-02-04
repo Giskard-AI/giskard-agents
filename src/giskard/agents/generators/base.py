@@ -32,7 +32,9 @@ class GenerationParams(BaseModel):
     max_tokens: int | None = Field(default=None)
     response_format: Type[BaseModel] | None = Field(default=None)
     tools: list[Tool] = Field(default_factory=list)
-    timeout: float | int | None = Field(default=None, description="Timeout in seconds for completion requests.")
+    timeout: float | int | None = Field(
+        default=None, description="Timeout in seconds for completion requests."
+    )
 
 
 @discriminated_base
