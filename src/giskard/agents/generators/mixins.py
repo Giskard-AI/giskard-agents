@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field, field_validator
 from ..chat import Message
 from ..rate_limiter import RateLimiter, get_rate_limiter
 from .base import GenerationParams, Response
-from .retry import RetryPolicy
+from .retry import MAX_WAIT_SECONDS, RetryPolicy
 
 
 class WithRateLimiter(BaseModel):
@@ -48,12 +48,42 @@ class WithRateLimiter(BaseModel):
 
 
 class WithRetryPolicy(BaseModel, ABC):
-    """Adds a retry policy to the generator."""
+    """Adds retry behavior to generator completions.
+
+    The policy is evaluated by `_complete` using Tenacity. To customize retry
+    behavior, implement `_should_retry` in your generator and return `True`
+    only for errors that are safe to retry (e.g., transient HTTP or rate-limit
+    failures).
+
+    Notes
+    -----
+    Custom generators should implement two methods:
+
+    - `_complete_once` to perform a single request without retry logic.
+    - `_should_retry` to decide whether a given exception should be retried.
+
+    Avoid nested retries: callers should not wrap a generator that already
+    includes `WithRetryPolicy` inside another retry mechanism, as this can
+    multiply delays and obscure failure handling.
+    """
 
     retry_policy: RetryPolicy | None = Field(default=RetryPolicy(max_retries=3))
 
     @abstractmethod
-    def _should_retry(self, err: Exception) -> bool: ...
+    def _should_retry(self, err: Exception) -> bool:
+        """Return whether the exception should trigger a retry.
+
+        Parameters
+        ----------
+        err : Exception
+            The exception raised by `_complete_once`.
+
+        Returns
+        -------
+        bool
+            `True` if the request should be retried, otherwise `False`.
+        """
+        ...
 
     @abstractmethod
     async def _complete_once(
@@ -84,15 +114,23 @@ class WithRetryPolicy(BaseModel, ABC):
         max_retries: int,
         *,
         base_delay: float | None = None,
+        max_delay: float | None = None,
     ) -> "WithRetryPolicy":
-        params = {"max_retries": max_retries}
+        current_policy = (
+            self.retry_policy.model_dump(exclude_unset=True)
+            if self.retry_policy is not None
+            else {}
+        )
 
-        if base_delay is not None:
-            params["base_delay"] = base_delay
-        elif self.retry_policy is not None:
-            params["base_delay"] = self.retry_policy.base_delay
+        patch = {
+            "max_retries": max_retries,
+            "base_delay": base_delay,
+            "max_delay": max_delay,
+        }
 
-        return self.model_copy(update={"retry_policy": RetryPolicy(**params)})
+        new_policy = current_policy | {k: v for k, v in patch.items() if v is not None}
+
+        return self.model_copy(update={"retry_policy": RetryPolicy(**new_policy)})
 
     async def _complete(
         self, messages: list[Message], params: GenerationParams | None = None
@@ -102,8 +140,12 @@ class WithRetryPolicy(BaseModel, ABC):
 
         retrier = t.AsyncRetrying(
             stop=t.stop_after_attempt(self.retry_policy.max_retries),
-            wait=t.wait_exponential(multiplier=self.retry_policy.base_delay),
+            wait=t.wait_exponential(
+                multiplier=self.retry_policy.base_delay,
+                max=self.retry_policy.max_delay or MAX_WAIT_SECONDS,
+            ),
             retry=self._tenacity_retry_condition,
+            before_sleep=self._tenacity_before_sleep,
             reraise=True,
         )
 
@@ -111,3 +153,6 @@ class WithRetryPolicy(BaseModel, ABC):
 
     def _tenacity_retry_condition(self, retry_state: t.RetryCallState) -> bool:
         return self._should_retry(retry_state.outcome.exception())
+
+    def _tenacity_before_sleep(self, retry_state: t.RetryCallState) -> None:
+        pass
