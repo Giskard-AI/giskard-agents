@@ -22,10 +22,24 @@ class Response(BaseModel):
 class GenerationParams(BaseModel):
     """Parameters for generating a completion.
 
+    Call-specific parameters passed to `complete` are meant to override the
+    generator-level defaults in `BaseGenerator.params`. Implementations should
+    merge parameters by taking the instance defaults and applying any
+    per-call values that are explicitly set (e.g., via `exclude_unset=True`).
+
     Attributes
     ----------
-    tools : list[Any], optional
-        List of tools available to the model.
+    temperature : float
+        Sampling temperature for the model.
+    max_tokens : int | None
+        Maximum number of tokens to generate. Use `None` for model defaults.
+    response_format : Type[BaseModel] | None
+        Optional response schema for structured outputs.
+    tools : list[Tool]
+        List of tools available to the model. Implementations may merge
+        generator-level and per-call tools rather than overriding.
+    timeout : float | int | None
+        Timeout in seconds for completion requests.
     """
 
     temperature: float = Field(default=1.0)
@@ -59,8 +73,10 @@ class BaseGenerator(Discriminated, ABC):
         ----------
         messages : List[Message]
             List of messages to send to the model.
-        params: GenerationParams | None
-            Parameters for the generation.
+        params : GenerationParams | None
+            Per-call parameters for the generation. Implementations should
+            apply these over `self.params`, so explicitly provided values take
+            precedence over generator defaults.
 
         Returns
         -------

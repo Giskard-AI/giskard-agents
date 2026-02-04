@@ -48,12 +48,42 @@ class WithRateLimiter(BaseModel):
 
 
 class WithRetryPolicy(BaseModel, ABC):
-    """Adds a retry policy to the generator."""
+    """Adds retry behavior to generator completions.
+
+    The policy is evaluated by `_complete` using Tenacity. To customize retry
+    behavior, implement `_should_retry` in your generator and return `True`
+    only for errors that are safe to retry (e.g., transient HTTP or rate-limit
+    failures).
+
+    Notes
+    -----
+    Custom generators should implement two methods:
+
+    - `_complete_once` to perform a single request without retry logic.
+    - `_should_retry` to decide whether a given exception should be retried.
+
+    Avoid nested retries: callers should not wrap a generator that already
+    includes `WithRetryPolicy` inside another retry mechanism, as this can
+    multiply delays and obscure failure handling.
+    """
 
     retry_policy: RetryPolicy | None = Field(default=RetryPolicy(max_retries=3))
 
     @abstractmethod
-    def _should_retry(self, err: Exception) -> bool: ...
+    def _should_retry(self, err: Exception) -> bool:
+        """Return whether the exception should trigger a retry.
+
+        Parameters
+        ----------
+        err : Exception
+            The exception raised by `_complete_once`.
+
+        Returns
+        -------
+        bool
+            `True` if the request should be retried, otherwise `False`.
+        """
+        ...
 
     @abstractmethod
     async def _complete_once(
