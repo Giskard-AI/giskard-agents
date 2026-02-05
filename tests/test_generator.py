@@ -139,7 +139,7 @@ def test_generator_with_params():
     assert generator.params.response_format is None
 
 
-def test_generator_with_params():
+def test_generator_with_params_preserves_state():
     """Test that with_params works correctly with a rate limiter."""
     generator = LiteLLMGenerator(model="test-model")
 
