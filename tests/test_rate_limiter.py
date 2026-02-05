@@ -291,8 +291,8 @@ class TestRateLimiterRegistry:
             RateLimiter.rpm(10), "llm", "openai", "gpt-5.2"
         ) as local_policy:
             effective_limiter = throttle(*input_target)
-            assert (
-                effective_limiter == CompositeRateLimiter(local_policy)
+            assert effective_limiter == (
+                CompositeRateLimiter(local_policy)
                 if expected_local
                 else CompositeRateLimiter()
             ), effective_limiter.rate_limiters
