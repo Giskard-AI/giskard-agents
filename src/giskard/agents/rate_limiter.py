@@ -289,14 +289,21 @@ class CompositeRateLimiter(RateLimiter):
             Combined details from all limiters.
         """
 
-        details = NO_WAIT_TIME
-        for rate_limiter in self.rate_limiters:
-            details += await rate_limiter.acquire()
-        return details
+        acquired_limiters = []
+        try:
+            details = NO_WAIT_TIME
+            for rate_limiter in self.rate_limiters:
+                details += await rate_limiter.acquire()
+                acquired_limiters.append(rate_limiter)
+            return details
+        except Exception as e:
+            # Release all acquired limiters
+            for rate_limiter in reversed(acquired_limiters):
+                await rate_limiter.release()
+            raise e
 
     async def release(self) -> None:
         """Release all composed limiters in reverse order."""
-
         for rate_limiter in reversed(self.rate_limiters):
             await rate_limiter.release()
 
