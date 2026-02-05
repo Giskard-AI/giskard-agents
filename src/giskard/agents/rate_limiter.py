@@ -275,7 +275,7 @@ class MaxConcurrentRequests(RateLimiter):
 class CompositeRateLimiter(RateLimiter):
     """Apply multiple rate limiters in sequence."""
 
-    rate_limiters: list[RateLimiter]
+    rate_limiters: tuple[RateLimiter, ...]
 
     def __init__(self, *rate_limiters: RateLimiter):
         self.rate_limiters = rate_limiters
