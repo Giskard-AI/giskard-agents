@@ -3,10 +3,10 @@ from .context import RunContext
 from .errors import Error, WorkflowError
 from .generators import Generator
 from .rate_limiter import (
+    NO_WAIT_TIME,
     CompositeRateLimiter,
     MaxConcurrentRequests,
     MaxRequestsPerMinute,
-    NO_WAIT_TIME,
     RateLimitDetails,
     RateLimitEntry,
     RateLimiter,

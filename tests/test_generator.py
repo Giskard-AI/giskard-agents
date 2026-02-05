@@ -77,9 +77,15 @@ async def test_generator_chat(generator: LiteLLMGenerator):
     assert isinstance(chats[1], Chat)
     assert isinstance(chats[2], Chat)
 
-@pytest.mark.parametrize("rate_limiter_target", [(), ("llm",), ("llm", "litellm"), ("llm", "litellm", "test-model")])
+
+@pytest.mark.parametrize(
+    "rate_limiter_target",
+    [(), ("llm",), ("llm", "litellm"), ("llm", "litellm", "test-model")],
+)
 async def test_litellm_generator_gets_rate_limiter(mock_response, rate_limiter_target):
-    with scoped_limiter(RateLimiter.budget(rpm=60, max_concurrent=1), *rate_limiter_target) as policy:
+    with scoped_limiter(
+        RateLimiter.budget(rpm=60, max_concurrent=1), *rate_limiter_target
+    ) as policy:
         generator = LiteLLMGenerator(model="test-model")
         with patch(
             "giskard.agents.generators.litellm_generator.acompletion",
@@ -118,7 +124,6 @@ async def test_generator_without_rate_limiter(mock_response):
     assert elapsed_time < 10e-3  # arbitrary small number, here 10ms
 
 
-
 def test_generator_with_params():
     generator = LiteLLMGenerator(model="test-model")
     generator = generator.with_params(temperature=0.5)
@@ -154,6 +159,7 @@ def test_generator_with_params():
     assert generator.params.temperature == 1.0  # default value
     assert generator.params.max_tokens is None
     assert generator.model == "test-model"
+
 
 async def test_generator_with_params_overwrite(mock_response):
     # ARRANGE: Create a generator with base parameters.
