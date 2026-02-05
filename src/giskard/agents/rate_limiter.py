@@ -1,160 +1,421 @@
+"""Composable rate limiters and scoped registry.
+
+This module provides async rate limiter primitives that can be combined and
+registered by target path to enforce both global and scoped limits.
+"""
+
 import asyncio
 import time
-import uuid
-from contextlib import asynccontextmanager
+from collections import defaultdict
+from contextlib import contextmanager
 
-from pydantic import BaseModel, Field, PrivateAttr
-
-
-class RateLimiterStrategy(BaseModel):
-    min_interval: float
-    max_concurrent: int = Field(default=5)
+from pydantic import BaseModel
 
 
-class RateLimiter(BaseModel, frozen=True):
-    rate_limiter_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    strategy: RateLimiterStrategy
+class RateLimitEntry(BaseModel, frozen=True):
+    """Single rate limit contribution.
 
-    _next_request_time: float = PrivateAttr(default_factory=time.monotonic)
-    _semaphore: asyncio.Semaphore = PrivateAttr()
-    _lock: asyncio.Lock = PrivateAttr()
+    Parameters
+    ----------
+    name : str
+        Human-readable limiter identifier.
+    wait_time : float
+        Time waited (in seconds) due to this limiter.
+    """
 
-    def model_post_init(self, __context) -> None:
-        self._semaphore = asyncio.Semaphore(self.strategy.max_concurrent)
-        self._lock = asyncio.Lock()
+    name: str
+    wait_time: float
 
-        _register_rate_limiter(self)
+
+class RateLimitDetails(BaseModel, frozen=True):
+    """Aggregated rate limit details for a request.
+
+    Parameters
+    ----------
+    entries : list[RateLimitEntry]
+        List of limiter contributions.
+    """
+
+    entries: list[RateLimitEntry] = []
+
+    @property
+    def wait_time(self) -> float:
+        """Total wait time.
+
+        Returns
+        -------
+        float
+            Sum of wait times for all entries.
+        """
+
+        return sum(e.wait_time for e in self.entries)
+
+    def __add__(self, other: "RateLimitDetails") -> "RateLimitDetails":
+        """Combine two rate limit details.
+
+        Parameters
+        ----------
+        other : RateLimitDetails
+            Details to merge.
+
+        Returns
+        -------
+        RateLimitDetails
+            Combined details with concatenated entries.
+        """
+
+        return RateLimitDetails(entries=self.entries + other.entries)
+
+
+NO_WAIT_TIME = RateLimitDetails(entries=[])
+
+
+class RateLimiter:
+    """Base class for async rate limiters."""
+
+    async def acquire(self) -> RateLimitDetails:
+        """Acquire rate limiter capacity.
+
+        Returns
+        -------
+        RateLimitDetails
+            Details about any wait time incurred.
+        """
+
+        return NO_WAIT_TIME
+
+    async def release(self) -> None:
+        """Release any resources associated with a limiter."""
+
+    async def __aenter__(self) -> RateLimitDetails:
+        """Enter the async context, acquiring rate limits.
+
+        Returns
+        -------
+        RateLimitDetails
+            Details about any wait time incurred.
+        """
+
+        return await self.acquire()
+
+    async def __aexit__(self, exc_type, exc_value, traceback) -> None:
+        """Exit the async context, releasing any resources."""
+
+        await self.release()
 
     @classmethod
-    def from_rpm(
-        cls, rpm: int, max_concurrent: int = 5, rate_limiter_id: str | None = None
-    ) -> "RateLimiter":
-        """Create a RateLimiter with requests per minute.
+    def budget(cls, rpm: int, max_concurrent: int | None = None) -> "RateLimiter":
+        """Create a composed limiter for both RPM and concurrency.
 
         Parameters
         ----------
         rpm : int
-            Requests per minute
+            Requests per minute.
+        max_concurrent : int | None
+            Maximum concurrent requests, if provided.
+
+        Returns
+        -------
+        RateLimiter
+            A composite limiter.
+        """
+
+        rate_limiter = cls.rpm(rpm)
+
+        if max_concurrent is not None:
+            # Max concurrent requests should be applied first
+            rate_limiter = cls.max_in_flight(max_concurrent).with_rate_limiters(
+                rate_limiter
+            )
+
+        return rate_limiter
+
+    @classmethod
+    def rpm(cls, rpm: int) -> "MaxRequestsPerMinute":
+        """Create a requests-per-minute limiter.
+
+        Parameters
+        ----------
+        rpm : int
+            Requests per minute.
+
+        Returns
+        -------
+        MaxRequestsPerMinute
+            RPM limiter.
+        """
+
+        return MaxRequestsPerMinute(rpm=rpm)
+
+    @classmethod
+    def max_in_flight(cls, max_concurrent: int) -> "MaxConcurrentRequests":
+        """Create a maximum concurrency limiter.
+
+        Parameters
+        ----------
         max_concurrent : int
-            Maximum concurrent requests
-        rate_limiter_id : str | None
-            Optional rate limiter ID
+            Maximum concurrent requests.
+
+        Returns
+        -------
+        MaxConcurrentRequests
+            Concurrency limiter.
         """
-        min_interval = 60.0 / rpm
-        strategy = RateLimiterStrategy(
-            min_interval=min_interval, max_concurrent=max_concurrent
-        )
-        return cls(
-            strategy=strategy,
-            rate_limiter_id=rate_limiter_id or str(uuid.uuid4()),
-        )
 
-    @asynccontextmanager
-    async def throttle(self):
-        """Acquire rate limiter using async context manager.
+        return MaxConcurrentRequests(max_concurrent=max_concurrent)
 
-        This enforces:
-        1. Maximum concurrent requests via semaphore
-        2. Minimum interval between request starts
+    def with_rate_limiters(
+        self, *rate_limiters: "RateLimiter"
+    ) -> "CompositeRateLimiter":
+        """Compose this limiter with others.
+
+        Parameters
+        ----------
+        *rate_limiters : RateLimiter
+            Additional limiters to apply after this one.
+
+        Returns
+        -------
+        CompositeRateLimiter
+            Composite limiter.
         """
-        try:
-            await self.acquire()
-            yield self
-        finally:
-            self.release()
 
-    async def acquire(self) -> None:
-        # Acquire semaphore to limit concurrency
-        await self._semaphore.acquire()
+        return CompositeRateLimiter(self, *rate_limiters)
 
-        # Then enforce timing constraints (throttling)
+
+class MaxRequestsPerMinute(RateLimiter):
+    """Enforce a minimum interval between request starts."""
+
+    rpm: int
+    _lock: asyncio.Lock
+    _next_request_time: float
+
+    def __init__(self, rpm: int):
+        if rpm <= 0:
+            raise ValueError("rpm must be greater than 0")
+
+        self.rpm = rpm
+        self._min_interval = 60.0 / self.rpm
+        self._lock = asyncio.Lock()
+        self._next_request_time = time.monotonic()
+
+    async def acquire(self) -> RateLimitDetails:
+        """Acquire capacity based on request spacing.
+
+        Returns
+        -------
+        RateLimitDetails
+            Details about any wait time incurred.
+        """
+
         async with self._lock:
             now = time.monotonic()
-            if self._next_request_time > now:
-                wait_time = self._next_request_time - now
-                await asyncio.sleep(wait_time)
-                self._next_request_time += self.strategy.min_interval
-            else:
-                self._next_request_time = now + self.strategy.min_interval
+            if self._next_request_time <= now:
+                self._next_request_time = now + self._min_interval
+                return NO_WAIT_TIME
 
-    def release(self) -> None:
+            wait_time = self._next_request_time - now
+            await asyncio.sleep(wait_time)
+            self._next_request_time += self._min_interval
+            return RateLimitDetails(
+                entries=[
+                    RateLimitEntry(
+                        name=f"MaxRequestsPerMinute(rpm={self.rpm})",
+                        wait_time=wait_time,
+                    )
+                ]
+            )
+
+
+class MaxConcurrentRequests(RateLimiter):
+    """Enforce a maximum number of concurrent in-flight requests."""
+
+    max_concurrent: int
+    _semaphore: asyncio.Semaphore
+
+    def __init__(self, max_concurrent: int):
+        if max_concurrent <= 0:
+            raise ValueError("max_concurrent must be greater than 0")
+
+        self.max_concurrent = max_concurrent
+        self._semaphore = asyncio.Semaphore(self.max_concurrent)
+
+    async def acquire(self) -> RateLimitDetails:
+        """Acquire a concurrency slot.
+
+        Returns
+        -------
+        RateLimitDetails
+            Details about any wait time incurred.
+        """
+
+        start_time = time.monotonic()
+        await self._semaphore.acquire()
+        end_time = time.monotonic()
+        wait_time = end_time - start_time
+        if wait_time < 1e-3:
+            # If the wait time is less than 1ms, consider the request not throttled
+            return NO_WAIT_TIME
+
+        return RateLimitDetails(
+            entries=[
+                RateLimitEntry(
+                    name=f"MaxConcurrentRequests(max_concurrent={self.max_concurrent})",
+                    wait_time=wait_time,
+                )
+            ]
+        )
+
+    async def release(self) -> None:
+        """Release a concurrency slot."""
+
         self._semaphore.release()
 
-    def __deepcopy__(self, memo) -> "RateLimiter":
-        # RateLimiter is a shared resource, so we can just return the same instance.
-        return self
+
+class CompositeRateLimiter(RateLimiter):
+    """Apply multiple rate limiters in sequence."""
+
+    rate_limiters: list[RateLimiter]
+
+    def __init__(self, *rate_limiters: RateLimiter):
+        self.rate_limiters = rate_limiters
+
+    async def acquire(self) -> RateLimitDetails:
+        """Acquire all composed limiters.
+
+        Returns
+        -------
+        RateLimitDetails
+            Combined details from all limiters.
+        """
+
+        details = NO_WAIT_TIME
+        for rate_limiter in self.rate_limiters:
+            details += await rate_limiter.acquire()
+        return details
+
+    async def release(self) -> None:
+        """Release all composed limiters in reverse order."""
+
+        for rate_limiter in reversed(self.rate_limiters):
+            await rate_limiter.release()
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, CompositeRateLimiter):
+            return False
+        return self.rate_limiters == other.rate_limiters
+
+    def __hash__(self) -> int:
+        return hash(tuple(self.rate_limiters))
 
 
-_rate_limiters: dict[str, RateLimiter] = {}
+class _RateLimiterRegistry:
+    _rate_limiters: list[RateLimiter]
+    _children: dict[str, "_RateLimiterRegistry"]
 
+    def __init__(self):
+        self._rate_limiters = []
+        self._children = defaultdict(lambda: _RateLimiterRegistry())
 
-def _register_rate_limiter(rate_limiter: RateLimiter) -> None:
-    rate_limiter_id = rate_limiter.rate_limiter_id
-    existing = _rate_limiters.get(rate_limiter_id)
-    if existing is not None and existing is not rate_limiter:
-        raise ValueError(
-            f"Rate limiter with id {rate_limiter_id} is already registered"
+    def list_by_target(self, *target: str) -> list[RateLimiter]:
+        if len(target) == 0:
+            return self._rate_limiters
+
+        return self._rate_limiters + self._children[target[0]].list_by_target(
+            *target[1:]
         )
-    _rate_limiters[rate_limiter_id] = rate_limiter
+
+    def register_rate_limiter(self, rate_limiter: RateLimiter, *target: str) -> None:
+        if len(target) == 0:
+            self._rate_limiters.append(rate_limiter)
+            return
+
+        self._children[target[0]].register_rate_limiter(rate_limiter, *target[1:])
+
+    def unregister_rate_limiter(self, rate_limiter: RateLimiter, *target: str) -> bool:
+        if len(target) == 0:
+            if rate_limiter in self._rate_limiters:
+                self._rate_limiters.remove(rate_limiter)
+                return True
+            return False
+
+        return self._children[target[0]].unregister_rate_limiter(
+            rate_limiter, *target[1:]
+        )
 
 
-def get_rate_limiter(
-    rate_limiter_id: str,
-) -> RateLimiter:
-    """Get or create a rate limiter.
+_RATE_LIMITER_REGISTRY = _RateLimiterRegistry()
+
+
+def throttle(*target: str) -> RateLimiter:
+    """Build a composite limiter for the requested target.
 
     Parameters
     ----------
-    rate_limiter_id : str
-        The rate limiter ID to retrieve.
+    *target : str
+        Target path components.
 
     Returns
     -------
     RateLimiter
-        The rate limiter.
+        Composite limiter for all matching scoped limiters.
     """
-    try:
-        return _rate_limiters[rate_limiter_id]
-    except KeyError as err:
-        raise ValueError(f"Rate limiter with id {rate_limiter_id} not found") from err
+
+    return CompositeRateLimiter(*_RATE_LIMITER_REGISTRY.list_by_target(*target))
 
 
-def get_or_create_rate_limiter(
-    *,
-    rate_limiter_id: str,
-    strategy: RateLimiterStrategy,
-) -> RateLimiter:
-    """Get an existing limiter from the registry, or create and register it.
+def register_rate_limiter(rate_limiter: RateLimiter, *target: str) -> None:
+    """Register a limiter for a target scope.
 
-    This is the supported way to implement singleton semantics with Pydantic v2:
-    avoid returning cached instances from model validators during `__init__`.
+    Parameters
+    ----------
+    rate_limiter : RateLimiter
+        Limiter to register.
+    *target : str
+        Target path components.
     """
-    try:
-        return get_rate_limiter(rate_limiter_id)
-    except ValueError:
-        try:
-            return RateLimiter(rate_limiter_id=rate_limiter_id, strategy=strategy)
-        except ValueError:
-            # Handle rare races where another coroutine registered the limiter between
-            # our lookup and creation attempt.
-            return get_rate_limiter(rate_limiter_id)
+
+    _RATE_LIMITER_REGISTRY.register_rate_limiter(rate_limiter, *target)
 
 
-def get_or_create_rate_limiter_from_rpm(
-    *,
-    rate_limiter_id: str,
-    rpm: int,
-    max_concurrent: int = 5,
-) -> RateLimiter:
-    """Get an existing limiter from the registry, or create/register one from RPM."""
+def unregister_rate_limiter(rate_limiter: RateLimiter, *target: str) -> bool:
+    """Unregister a limiter from a target scope.
+
+    Parameters
+    ----------
+    rate_limiter : RateLimiter
+        Limiter to unregister.
+    *target : str
+        Target path components.
+
+    Returns
+    -------
+    bool
+        True if a limiter was removed.
+    """
+
+    return _RATE_LIMITER_REGISTRY.unregister_rate_limiter(rate_limiter, *target)
+
+
+@contextmanager
+def scoped_limiter(rate_limiter: RateLimiter, *target: str):
+    """Temporarily register a limiter within a scope.
+
+    Parameters
+    ----------
+    rate_limiter : RateLimiter
+        Limiter to register.
+    *target : str
+        Target path components.
+
+    Yields
+    ------
+    RateLimiter
+        The registered limiter.
+    """
+
+    register_rate_limiter(rate_limiter, *target)
     try:
-        return get_rate_limiter(rate_limiter_id)
-    except ValueError:
-        try:
-            return RateLimiter.from_rpm(
-                rpm=rpm,
-                max_concurrent=max_concurrent,
-                rate_limiter_id=rate_limiter_id,
-            )
-        except ValueError:
-            return get_rate_limiter(rate_limiter_id)
+        yield rate_limiter
+    finally:
+        unregister_rate_limiter(rate_limiter, *target)

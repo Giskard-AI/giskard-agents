@@ -28,6 +28,7 @@ dev = [
     "pylint-pydantic==0.4.1",
     "pytest==9.0.2",
     "pytest-asyncio==1.3.0",
+    "pytest-timeout>=2.4.0",
 ]
 
 # Tools should be installed via `uv tool install`:

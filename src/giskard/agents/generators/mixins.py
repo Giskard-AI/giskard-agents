@@ -1,50 +1,11 @@
 from abc import ABC, abstractmethod
-from contextlib import nullcontext
-from typing import AsyncContextManager
 
 import tenacity as t
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
 from ..chat import Message
-from ..rate_limiter import RateLimiter, get_rate_limiter
 from .base import GenerationParams, Response
 from .retry import RetryPolicy
-
-
-class WithRateLimiter(BaseModel):
-    """Adds a rate limiter to the generator."""
-
-    rate_limiter: RateLimiter | None = Field(default=None, validate_default=True)
-
-    @field_validator("rate_limiter", mode="before")
-    def _validate_rate_limiter(cls, v: RateLimiter | str | None) -> RateLimiter | None:
-        # Supported singleton semantics are implemented at the container level:
-        # - If a string is provided, it must already exist in the registry.
-        # - If a dict is provided (e.g. from JSON deserialization), we reuse an
-        #   already-registered instance when possible, otherwise we let Pydantic
-        #   create a new RateLimiter from the dict.
-        if v is None or isinstance(v, RateLimiter):
-            return v
-
-        if isinstance(v, str):
-            return get_rate_limiter(v)
-
-        if isinstance(v, dict):
-            rate_limiter_id = v.get("rate_limiter_id")
-            if rate_limiter_id:
-                try:
-                    return get_rate_limiter(rate_limiter_id)
-                except ValueError:
-                    return v  # let Pydantic create & register a new instance
-            return v
-
-        return v
-
-    def _rate_limiter_context(self) -> AsyncContextManager:
-        if self.rate_limiter is None:
-            return nullcontext()
-
-        return self.rate_limiter.throttle()
 
 
 class WithRetryPolicy(BaseModel, ABC):

@@ -5,7 +5,7 @@ import pytest
 from giskard.agents.chat import Chat, Message
 from giskard.agents.generators.base import GenerationParams, Response
 from giskard.agents.generators.litellm_generator import LiteLLMGenerator
-from giskard.agents.rate_limiter import RateLimiter, _rate_limiters
+from giskard.agents.rate_limiter import RateLimiter, scoped_limiter
 from giskard.agents.templates import MessageTemplate
 from giskard.agents.workflow import ChatWorkflow
 from litellm import ModelResponse
@@ -77,28 +77,28 @@ async def test_generator_chat(generator: LiteLLMGenerator):
     assert isinstance(chats[1], Chat)
     assert isinstance(chats[2], Chat)
 
+@pytest.mark.parametrize("rate_limiter_target", [(), ("llm",), ("llm", "litellm"), ("llm", "litellm", "test-model")])
+async def test_litellm_generator_gets_rate_limiter(mock_response, rate_limiter_target):
+    with scoped_limiter(RateLimiter.budget(rpm=60, max_concurrent=1), *rate_limiter_target) as policy:
+        generator = LiteLLMGenerator(model="test-model")
+        with patch(
+            "giskard.agents.generators.litellm_generator.acompletion",
+            return_value=mock_response,
+        ):
+            start_time = time.monotonic()
+            for _ in range(3):
+                await generator.complete(
+                    messages=[Message(role="user", content="Test message")]
+                )
+            end_time = time.monotonic()
 
-async def test_litellm_generator_gets_rate_limiter(mock_response):
-    rate_limiter = RateLimiter.from_rpm(rpm=60, max_concurrent=1)
-    generator = LiteLLMGenerator(model="test-model", rate_limiter=rate_limiter)
-    with patch(
-        "giskard.agents.generators.litellm_generator.acompletion",
-        return_value=mock_response,
-    ):
-        start_time = time.monotonic()
-        for _ in range(3):
-            await generator.complete(
-                messages=[Message(role="user", content="Test message")]
-            )
-        end_time = time.monotonic()
-
-    # Distribution of request:
-    # t = 0.0 -> request 1
-    # t = 1.0 -> request 2
-    # t = 2.0 -> request 3
-    elapsed_time = end_time - start_time
-    assert elapsed_time >= 2
-    assert elapsed_time < 2 + rate_limiter.strategy.min_interval
+        # Distribution of request:
+        # t = 0.0 -> request 1
+        # t = 1.0 -> request 2
+        # t = 2.0 -> request 3
+        elapsed_time = end_time - start_time
+        assert elapsed_time >= 2
+        assert elapsed_time < 2 + policy.rate_limiters[1]._min_interval
 
 
 async def test_generator_without_rate_limiter(mock_response):
@@ -118,15 +118,6 @@ async def test_generator_without_rate_limiter(mock_response):
     assert elapsed_time < 10e-3  # arbitrary small number, here 10ms
 
 
-async def test_generator_rate_limiter_context():
-    rate_limiter = RateLimiter.from_rpm(
-        rpm=100, rate_limiter_id="test_generator_rate_limiter_context"
-    )
-    generator = LiteLLMGenerator(
-        model="test-model", rate_limiter="test_generator_rate_limiter_context"
-    )
-    assert generator.rate_limiter is rate_limiter
-
 
 def test_generator_with_params():
     generator = LiteLLMGenerator(model="test-model")
@@ -143,61 +134,26 @@ def test_generator_with_params():
     assert generator.params.response_format is None
 
 
-def test_generator_with_params_and_rate_limiter():
+def test_generator_with_params():
     """Test that with_params works correctly with a rate limiter."""
-    rate_limiter = RateLimiter.from_rpm(rpm=100, max_concurrent=5)
-    generator = LiteLLMGenerator(model="test-model", rate_limiter=rate_limiter)
+    generator = LiteLLMGenerator(model="test-model")
 
     # Verify initial state
-    assert generator.rate_limiter is rate_limiter
+    assert generator.model == "test-model"
+    assert generator.params.temperature == 1.0
+    assert generator.params.max_tokens is None
 
     # Call with_params and verify rate limiter is preserved
     generator_with_params = generator.with_params(temperature=0.5, max_tokens=100)
     assert generator_with_params.params.temperature == 0.5
     assert generator_with_params.params.max_tokens == 100
-    # Verify rate limiter is preserved and the same instance
-    assert generator_with_params.rate_limiter is rate_limiter
+    # Verify name is preserved
+    assert generator_with_params.model == "test-model"
 
     # Verify original generator is unchanged
     assert generator.params.temperature == 1.0  # default value
     assert generator.params.max_tokens is None
-    assert generator.rate_limiter is rate_limiter
-
-
-def test_generator_serialization_keep_rate_limiter_instance():
-    """Test that serializing and deserializing a generator preserves the rate limiter instance."""
-    rate_limiter = RateLimiter.from_rpm(rpm=100, max_concurrent=5)
-    generator = LiteLLMGenerator(model="test-model", rate_limiter=rate_limiter)
-
-    json_str = generator.model_dump_json()
-    deserialized_generator = LiteLLMGenerator.model_validate_json(json_str)
-
-    assert deserialized_generator.rate_limiter is rate_limiter
-
-
-def test_generator_serialization_recreate_rate_limiter_instance_if_not_in_registry():
-    """Test that deserializing a generator recreates the rate limiter if it's not in the registry."""
-    rate_limiter = RateLimiter.from_rpm(rpm=100, max_concurrent=5)
-    generator = LiteLLMGenerator(model="test-model", rate_limiter=rate_limiter)
-
-    json_str = generator.model_dump_json()
-    del _rate_limiters[rate_limiter.rate_limiter_id]
-    deserialized_generator = LiteLLMGenerator.model_validate_json(json_str)
-
-    assert deserialized_generator.rate_limiter is not rate_limiter
-    assert (
-        deserialized_generator.rate_limiter.rate_limiter_id
-        == rate_limiter.rate_limiter_id
-    )
-    assert (
-        deserialized_generator.rate_limiter.strategy.min_interval
-        == rate_limiter.strategy.min_interval
-    )
-    assert (
-        deserialized_generator.rate_limiter.strategy.max_concurrent
-        == rate_limiter.strategy.max_concurrent
-    )
-
+    assert generator.model == "test-model"
 
 async def test_generator_with_params_overwrite(mock_response):
     # ARRANGE: Create a generator with base parameters.

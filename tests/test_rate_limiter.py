@@ -1,153 +1,298 @@
 import asyncio
-import datetime
+import sys
 import time
 
 import pytest
-from giskard.agents.rate_limiter import RateLimiter, get_or_create_rate_limiter_from_rpm
+from giskard.agents.rate_limiter import (
+    NO_WAIT_TIME,
+    CompositeRateLimiter,
+    RateLimiter,
+    scoped_limiter,
+    throttle,
+)
+
+JITTER_TIME = 0.02  # 20ms jitter
 
 
-class MockRateLimitError(Exception):
-    pass
+class TestMaxRequestsPerMinute:
+    @pytest.mark.parametrize("rpm", [0, -1, -(sys.maxsize / 2)])
+    def test_rpm_cannot_be_less_than_1(self, rpm: int):
+        with pytest.raises(ValueError, match="rpm must be greater than 0"):
+            RateLimiter.rpm(rpm)
 
+    @pytest.mark.timeout(1)
+    async def test_allow_parallel_requests(self):
+        job_started_signal = asyncio.Event()
+        signal = asyncio.Event()
 
-async def mock_job(rate_limiter: RateLimiter):
-    async with rate_limiter.throttle():
-        return datetime.datetime.now()
+        async def wait_for_signal(rate_limiter: RateLimiter) -> None:
+            async with rate_limiter:
+                # Ensure the job has started
+                job_started_signal.set()
+                await signal.wait()
 
+        async def signal_task(rate_limiter: RateLimiter) -> None:
+            async with rate_limiter:
+                await asyncio.sleep(1e-3)
+                signal.set()
 
-async def mock__long_job(rate_limiter: RateLimiter, wait_time: float):
-    async with rate_limiter.throttle():
-        started = time.monotonic()
-        await asyncio.sleep(wait_time)
-        return started
+        rate_limiter = RateLimiter.rpm(1_000_000)
 
+        async with asyncio.TaskGroup() as tg:
+            tg.create_task(wait_for_signal(rate_limiter))
+            # Ensure the job has started so it'll be a deadlock if the rate limiter is not working with parallel tasks
+            await job_started_signal.wait()
+            tg.create_task(signal_task(rate_limiter))
 
-async def test_rate_limiter_max_concurrent_requests():
-    rate_limiter = RateLimiter.from_rpm(500, max_concurrent=10)
+    async def test_throttle_rate(self):
+        rate_limiter = RateLimiter.budget(rpm=6_000)  # 100 requests per second
 
-    # Lock all threads
-    for _ in range(10):
-        await rate_limiter.acquire()
+        all_details = []
 
-    # Create a task
-    task = asyncio.create_task(mock_job(rate_limiter))
+        async def throttle_task(rate_limiter: RateLimiter) -> None:
+            async with rate_limiter as details:
+                all_details.append(details)
 
-    # Task should be blocked
-    assert not task.done()
+        start_time = time.monotonic()
+        async with asyncio.TaskGroup() as tg:
+            for _ in range(50):
+                tg.create_task(throttle_task(rate_limiter))
 
-    # Unlock a thread
-    unlock_time = datetime.datetime.now()
-    rate_limiter.release()
-
-    # Task should be released
-    await asyncio.wait_for(task, timeout=1.0)
-    assert task.done()
-    assert task.result() > unlock_time
-
-
-async def test_rate_limiter_throttle_rate():
-    rpm = 240
-    expected_interval = 60.0 / rpm
-    rate_limiter = RateLimiter.from_rpm(rpm, max_concurrent=2)
-
-    start_time = time.monotonic()
-    for i in range(10):
-        async with rate_limiter.throttle():
-            pass
+        elapsed_time = time.monotonic() - start_time
         assert (
-            time.monotonic() - start_time >= expected_interval * i
-            and time.monotonic() - start_time < expected_interval * (i + 1)
-        )
+            elapsed_time >= 0.49
+        )  # 49 requests should take at least 490ms, first request is free, so we need to wait for 49 requests
+        assert (
+            elapsed_time < 0.49 + JITTER_TIME
+        )  # Ensure reasonable time to run the tasks
 
-    # No throttle should be applied
-    await asyncio.sleep(expected_interval)
-    start_time = time.monotonic()
-    async with rate_limiter.throttle():
-        pass
-    assert time.monotonic() - start_time < expected_interval
+        assert len(all_details) == 50
+        assert (
+            all_details[0].wait_time == 0
+        )  # Ensure the first request is not throttled
+        for detail in all_details[1:]:
+            assert detail.wait_time > 0
+            assert (
+                detail.wait_time <= 0.49
+            )  # Ensure the wait time is within the expected range
+            assert (
+                detail.entries[0].name == "MaxRequestsPerMinute(rpm=6000)"
+            )  # Ensure the rate limiter name is correct
+
+    async def test_throttle_rate_reset_after_interval(self):
+        rate_limiter = RateLimiter.rpm(60 * 25)  # 25 requests per second
+
+        async def throttle_task(rate_limiter: RateLimiter) -> None:
+            async with rate_limiter as details:
+                return details
+
+        for _ in range(10):
+            details = await throttle_task(rate_limiter)
+            assert details.wait_time == 0  # Ensure the task is not throttled
+            await asyncio.sleep(rate_limiter._min_interval)
 
 
-async def test_rate_limiter_requests_per_minute():
-    """Test that rpm actually limits to requests per minute, not requests per second."""
-    # Set a low rpm to make the timing difference obvious
-    rpm = 60
-    rate_limiter = RateLimiter.from_rpm(rpm, max_concurrent=10)
+class TestMaxConcurrentRequests:
+    @pytest.mark.parametrize("max_concurrent", [0, -1, -(sys.maxsize / 2)])
+    def test_max_concurrent_cannot_be_less_than_1(self, max_concurrent: int):
+        with pytest.raises(ValueError, match="max_concurrent must be greater than 0"):
+            RateLimiter.max_in_flight(max_concurrent)
 
-    start_time = time.monotonic()
+    @pytest.mark.timeout(1)
+    async def test_allow_parallel_requests(self):
+        rate_limiter = RateLimiter.max_in_flight(10)
+        barrier = asyncio.Barrier(10)
 
-    # Make 4 requests - with correct implementation this should take ~3 seconds
-    # (3 intervals of 1 second each between 4 requests)
-    for _ in range(4):
-        async with rate_limiter.throttle():
-            pass
+        async def throttle_task(rate_limiter: RateLimiter) -> None:
+            async with rate_limiter as details:
+                assert details.wait_time == 0  # Ensure the task is not throttled
+                await barrier.wait()
 
-    elapsed_time = time.monotonic() - start_time
+        async with asyncio.TaskGroup() as tg:
+            for _ in range(10):
+                tg.create_task(throttle_task(rate_limiter))
 
-    # With correct implementation: should take ~3 seconds (60/60 = 1 second per interval)
-    # With buggy implementation: takes ~0.05 seconds (1/60 ≈ 0.0167 seconds per interval)
-    assert elapsed_time >= 2.5, (
-        f"Expected at least 2.5 seconds for 4 requests at 60 rpm, got {elapsed_time:.3f} seconds"
+    @pytest.mark.timeout(1)
+    async def test_block_when_max_concurrent_reached(self):
+        rate_limiter = RateLimiter.max_in_flight(5)
+        barrier = asyncio.Barrier(10)
+        waited_tasks = []
+
+        async def throttle_task(rate_limiter: RateLimiter) -> None:
+            async with rate_limiter as details:
+                waited_tasks.append(details)
+                await barrier.wait()
+
+        async with asyncio.TaskGroup() as tg:
+            for _ in range(10):
+                tg.create_task(throttle_task(rate_limiter))
+
+            await asyncio.sleep(JITTER_TIME)
+            assert barrier.n_waiting == 5  # ensure that only 5 tasks are waiting
+            assert len(waited_tasks) == 5  # ensure that 5 tasks have been throttled
+            for detail in waited_tasks:
+                assert detail.wait_time == 0
+
+            for _ in range(5):
+                tg.create_task(barrier.wait())  # Unblock the waiting tasks
+
+            await asyncio.sleep(JITTER_TIME)
+            assert barrier.n_waiting == 5  # Ensure the next 5 tasks have been started
+
+            for _ in range(5):
+                tg.create_task(barrier.wait())  # Unblock the waiting tasks
+
+            await asyncio.sleep(JITTER_TIME)
+            assert barrier.n_waiting == 0  # Ensure all tasks have been finished
+
+            assert len(waited_tasks) == 10  # Ensure 5 tasks have been throttled
+            for detail in waited_tasks[5:]:
+                assert (
+                    detail.wait_time > JITTER_TIME
+                    and detail.wait_time <= 2 * JITTER_TIME
+                )  # Ensure the wait time is within the expected range (more than jitter time, less than 2 * jitter time)
+                assert (
+                    detail.entries[0].name == "MaxConcurrentRequests(max_concurrent=5)"
+                )  # Ensure the rate limiter name is correct
+
+
+class TestCompositeRateLimiter:
+    @pytest.mark.timeout(1)
+    async def test_composite_rate_limiter(self):
+        rate_limiter = RateLimiter.budget(rpm=6_000, max_concurrent=5)
+
+        barrier = asyncio.Barrier(10)
+        waited_tasks = []
+
+        async def throttle_task(rate_limiter: RateLimiter) -> None:
+            async with rate_limiter as details:
+                waited_tasks.append(details)
+                await barrier.wait()
+                return details
+
+        async with asyncio.TaskGroup() as tg:
+            for _ in range(10):
+                tg.create_task(throttle_task(rate_limiter))
+
+            expected_wait_time = 0.04 + JITTER_TIME
+            await asyncio.sleep(expected_wait_time)
+            assert barrier.n_waiting == 5  # ensure that only 5 tasks are waiting
+            assert len(waited_tasks) == 5  # ensure that 5 tasks have been throttled
+            assert (
+                waited_tasks[0].wait_time == 0
+            )  # ensure the first task is not throttled
+            for detail in waited_tasks[1:]:
+                assert (
+                    detail.wait_time > 0 and detail.wait_time <= 0.04
+                )  # ensure the wait time is within the expected range (10ms throttle per task)
+
+            for _ in range(5):
+                tg.create_task(barrier.wait())  # Unblock the waiting tasks
+
+            await asyncio.sleep(expected_wait_time)
+            assert (
+                barrier.n_waiting == 5
+            )  # ensure that the next 5 tasks have been started
+            assert len(waited_tasks) == 10  # Ensure that all tasks have been throttled
+
+            # ensure the first task is not throttled
+            assert len(waited_tasks[5].entries) == 1
+            assert (
+                waited_tasks[5].entries[0].name
+                == "MaxConcurrentRequests(max_concurrent=5)"
+            )  # ensure the rate limiter name is correct
+            assert (
+                waited_tasks[5].entries[0].wait_time > expected_wait_time
+                and waited_tasks[5].entries[0].wait_time <= 2 * expected_wait_time
+            )  # ensure the wait time is within the expected range (more than jitter time, less than 2 * jitter time)
+            for detail in waited_tasks[6:]:
+                assert len(detail.entries) == 2
+                assert (
+                    detail.entries[0].name == "MaxConcurrentRequests(max_concurrent=5)"
+                )  # ensure the rate limiter name is correct
+                assert (
+                    detail.entries[0].wait_time > expected_wait_time
+                    and detail.entries[0].wait_time <= 2 * expected_wait_time
+                )  # ensure the wait time is within the expected range (more than jitter time, less than 2 * jitter time)
+                assert (
+                    detail.entries[1].name == "MaxRequestsPerMinute(rpm=6000)"
+                )  # ensure the rate limiter name is correct
+                assert (
+                    detail.entries[1].wait_time > 0
+                    and detail.entries[1].wait_time <= 0.04
+                )  # ensure the wait time is within the expected range (10ms throttle per task)
+                assert (
+                    detail.wait_time
+                    == detail.entries[0].wait_time + detail.entries[1].wait_time
+                )  # ensure the wait time is the sum of the two rate limiters
+
+            for _ in range(5):
+                tg.create_task(barrier.wait())  # Unblock the waiting tasks
+
+
+class TestRateLimiterRegistry:
+    @pytest.mark.timeout(1)
+    @pytest.mark.parametrize("target", [(), ("llm",), ("llm", "litellm", "openai")])
+    async def test_throttle_return_empty_rate_limiter_if_no_rate_limiters_registered(
+        self, target: tuple[str, ...]
+    ):
+        rate_limiter = throttle(*target)
+        assert isinstance(rate_limiter, CompositeRateLimiter)
+        assert len(rate_limiter.rate_limiters) == 0
+
+        # ensure the rate limiter works as expected
+        async def throttle_task(rate_limiter: RateLimiter) -> None:
+            async with rate_limiter as details:
+                assert details is NO_WAIT_TIME
+                assert details.wait_time == 0
+                await asyncio.sleep(1e-3)
+
+        rate_limiter = throttle()
+        async with asyncio.TaskGroup() as tg:
+            for _ in range(10):
+                tg.create_task(throttle_task(rate_limiter))
+
+    @pytest.mark.parametrize(
+        "target,expected_local",
+        [
+            (("llm",), True),
+            (("llm", "openai"), True),
+            (("embedding",), False),
+        ],
     )
+    async def test_trottle_global_rate_limiter_is_always_provided_first(
+        self, target: tuple[str, ...], expected_local: bool
+    ):
+        with scoped_limiter(RateLimiter.rpm(100)) as global_policy:
+            with scoped_limiter(RateLimiter.rpm(10), "llm") as local_policy:
+                effective_limiter = throttle(*target)
+                assert effective_limiter == (
+                    CompositeRateLimiter(global_policy, local_policy)
+                    if expected_local
+                    else CompositeRateLimiter(global_policy)
+                )
 
-
-async def test_rate_limiter_max_concurrent():
-    rpm = 600
-    expected_interval = 0.1
-    rate_limiter = RateLimiter.from_rpm(rpm, max_concurrent=10)
-
-    tasks = [
-        asyncio.create_task(mock__long_job(rate_limiter, wait_time=3.0))
-        for _ in range(20)
-    ]
-
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-
-    # First 10 requests should be run immediately every 0.1 seconds
-    first_start = results[0]
-    for i in range(10):
-        assert results[i] - first_start >= expected_interval * i
-        assert results[i] - first_start < expected_interval * (i + 1)
-
-    # Next requests should wait first 10 tasks to finish, i.e. the 11th request
-    # will start 5 seconds after the 1st request.
-    second_batch_start = results[10]
-    assert second_batch_start - first_start >= 3.0
-    assert second_batch_start - first_start < 3.0 + expected_interval
-
-    # Then the rest of the requests should be spaced by the expected interval
-    for i in range(11, 20):
-        assert results[i] - second_batch_start >= expected_interval * (i - 10)
-        assert results[i] - second_batch_start < expected_interval * (i - 9)
-
-
-def test_can_serialize_rate_limiter():
-    rate_limiter = RateLimiter.from_rpm(
-        rpm=600, max_concurrent=10, rate_limiter_id="test_can_serialize_rate_limiter"
+    @pytest.mark.parametrize(
+        "input_target,expected_local",
+        [
+            (("llm",), False),
+            (("llm", "openai"), False),
+            (("llm", "openai", "gpt-5.2"), True),
+            (("llm", "openai", "gpt-5.2", "2026-02-05"), True),
+            (("llm", "openai", "gpt-5.2-codex"), False),
+            (("embedding", "openai"), False),
+            ((), False),
+        ],
     )
-    assert rate_limiter.model_dump() == {
-        "rate_limiter_id": "test_can_serialize_rate_limiter",
-        "strategy": {"min_interval": 0.1, "max_concurrent": 10},
-    }
-
-
-def test_rate_limiter_from_rpm_duplicate_id_raises():
-    rate_limiter_id = "test_rate_limiter_from_rpm_duplicate_id_raises"
-    rl1 = RateLimiter.from_rpm(rpm=500, rate_limiter_id=rate_limiter_id)
-    assert hasattr(rl1, "__pydantic_private__")
-    assert rl1._semaphore is not None
-
-    with pytest.raises(ValueError, match="already registered"):
-        RateLimiter.from_rpm(rpm=500, rate_limiter_id=rate_limiter_id)
-
-
-def test_get_or_create_rate_limiter_from_rpm_returns_singleton():
-    rate_limiter_id = "test_get_or_create_rate_limiter_from_rpm_returns_singleton"
-    rl1 = get_or_create_rate_limiter_from_rpm(
-        rate_limiter_id=rate_limiter_id, rpm=500, max_concurrent=5
-    )
-    rl2 = get_or_create_rate_limiter_from_rpm(
-        rate_limiter_id=rate_limiter_id, rpm=500, max_concurrent=5
-    )
-    assert rl1 is rl2
-    assert hasattr(rl2, "__pydantic_private__")
-    assert rl2._semaphore is not None
+    async def test_throttle_find_local_rate_limiter_when_global_rate_limiter_is_not_provided(
+        self, input_target, expected_local
+    ):
+        with scoped_limiter(
+            RateLimiter.rpm(10), "llm", "openai", "gpt-5.2"
+        ) as local_policy:
+            effective_limiter = throttle(*input_target)
+            assert (
+                effective_limiter == CompositeRateLimiter(local_policy)
+                if expected_local
+                else CompositeRateLimiter()
+            ), effective_limiter.rate_limiters
