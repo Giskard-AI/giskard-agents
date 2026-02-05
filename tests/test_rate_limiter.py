@@ -260,7 +260,7 @@ class TestRateLimiterRegistry:
             (("embedding",), False),
         ],
     )
-    async def test_trottle_global_rate_limiter_is_always_provided_first(
+    async def test_throttle_global_rate_limiter_is_always_provided_first(
         self, target: tuple[str, ...], expected_local: bool
     ):
         with scoped_limiter(RateLimiter.rpm(100)) as global_policy:
