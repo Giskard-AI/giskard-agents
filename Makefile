@@ -37,7 +37,9 @@ check-compat: ## Check Python 3.11 compatibility
 	uv tool run vermin --target=3.11- --no-tips --violations .
 
 security: ## Check for security vulnerabilities
-	uv run pip-audit .
+	# TODO: Remove --ignore-vuln CVE-2026-4539 flag when patch exists for pygments
+	uv run pip-audit --ignore-vuln CVE-2026-4539
+
 
 generate-licenses: ## Generate licenses
 	uv tool run licensecheck --license MIT \
