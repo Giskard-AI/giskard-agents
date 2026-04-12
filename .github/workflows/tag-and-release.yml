@@ -75,7 +75,7 @@ jobs:
       - name: Create GitHub Release
         env:
           VERSION_NAME: ${{ steps.get_version.outputs.version_name }}
-        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name: ${{ env.VERSION_NAME }}
           fail_on_unmatched_files: true
