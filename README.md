@@ -1,3 +1,8 @@
+> [!IMPORTANT]
+> **This repository has been archived.** The Giskard Agents library continues to live and being actively developed in the Giskard OSS repository:
+> **[Giskard-AI/giskard-oss](https://github.com/Giskard-AI/giskard-oss)**
+
+
 # Giskard Agents
 
 Giskard Agents is a lightweight library that orchestrates LLM completions and agents in parallel workflows. It enables multiple AI workflows to run independently while maintaining coordination and synchronization between them.
